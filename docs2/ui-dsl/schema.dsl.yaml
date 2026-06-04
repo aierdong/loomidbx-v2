@@ -1,0 +1,199 @@
+page:
+  role: editor-shell
+  layout: sidebar-shell
+
+  spec:
+    summary: "Multi-connection database schema browser with per-field test-data generator configuration"
+    notes:
+      - "Left panel is a 4-level collapsible tree (connection → database → schema → table); right-click context menus on connection and table nodes with distinct action sets"
+      - "Right panel uses browser-style multi-tab: selecting a table reuses the unpinned active tab; pinned tabs persist until explicitly closed"
+      - "Fields sub-tab is the primary view: each row has a clickable generator cell (badge); clicking it opens/focuses the field-generator floating panel; auto-increment PK rows omit the generator cell entirely"
+      - "responsive layout (mobile: stacked) is inferred — prototype has no media queries"
+
+  sections:
+    - role: navigation-hub
+      layout: vertical-stack
+      zones:
+        top:
+          components:
+            - role: brand-logo
+        middle:
+          interactions:
+            - intent: navigate
+              navigates-to: schema-browser
+            - intent: navigate
+              navigates-to: projects
+        bottom:
+          interactions:
+            - intent: sign-out
+
+    - role: global-header
+      purpose: app-top-bar
+      layout: horizontal-strip
+      behavior:
+        note: "NOT a path breadcrumb — no trail items. This is the application top bar containing only global utility actions: theme toggle, language switcher, and settings link."
+      interactions:
+        - intent: toggle-theme
+        - intent: navigate
+          navigates-to: settings
+          note: "Opens settings.html — page structure defined and implemented separately; agent does not need to scaffold it"
+      components:
+        - role: form-field
+          type: select
+          purpose: language-switcher
+
+    - role: entity-list
+      purpose: connection-and-table-tree-explorer
+      layout: vertical-stack
+      behavior:
+        note: "Collapsible 4-level tree. Connection nodes carry an ON/OFF status badge. Right-click on connection: connect/disconnect, refresh, edit, delete (destructive). Right-click on table: open-in-current-tab or open-in-new-tab. Toolbar actions: new-connection, refresh, expand-all, collapse-all, toggle-connected-only. Filter input covers all tree levels simultaneously."
+      data:
+        source: connection-tree
+        type: collection
+        mutable: true
+      state:
+        connected-only:
+          values: [on, off]
+          default: off
+          persistent: false
+      interactions:
+        - intent: create-connection
+          priority: primary
+        - intent: filter
+        - intent: expand
+        - intent: select-item
+          navigates-to: table-detail
+        - intent: toggle
+          target: connected-only
+        - intent: delete-connection
+          priority: destructive
+      components:
+        - role: search-input
+          purpose: tree-filter
+        - role: badge
+          purpose: connection-status
+
+    - role: detail-panel
+      purpose: table-schema-and-generator-config
+      layout: tabbed
+      behavior:
+        note: "Horizontal tab bar manages multiple open table tabs. Selecting a table reuses the unpinned active tab; if none exists, a new tab is created. Each tab exposes a pin toggle — pinned tabs survive table selection and must be closed manually. Content area uses a vertical sub-tab panel with four views: fields (default), constraints, foreign-keys, ddl. In the fields view, each row has a generator badge cell; clicking opens/focuses the field-generator floating panel. Auto-increment PK rows render no generator cell. The foreign-keys view also supports user-created logical foreign keys (not database-enforced)."
+      data:
+        source: table-schema
+        type: singleton
+        mutable: true
+      state:
+        open-tabs:
+          type: collection
+          persistent: false
+        active-tab:
+          type: entity-ref
+          nullable: true
+          default: null
+        active-sub-tab:
+          values: [fields, constraints, foreign-keys, ddl]
+          default: fields
+          persistent: false
+      interactions:
+        - intent: select-item
+          target: active-tab
+          priority: primary
+        - intent: toggle
+          target: tab-pinned
+        - intent: dismiss
+          purpose: close-tab
+        - intent: select-item
+          target: active-sub-tab
+        - intent: edit-generator
+      components:
+        - role: tab-bar
+          purpose: open-table-tabs
+        - role: data-table
+          purpose: fields-view
+          visible-when: "active-sub-tab == fields"
+          columns:
+            - { name: index,       type: number }
+            - { name: field-name,  type: text }
+            - { name: data-type,   type: text }
+            - { name: constraints, type: text }
+            - { name: default,     type: text }
+            - { name: comment,     type: text }
+            - { name: generator,   type: badge, note: "clickable; opens/focuses field-generator floating panel; absent on auto-increment PK rows" }
+        - role: data-table
+          purpose: constraints-view
+          visible-when: "active-sub-tab == constraints"
+          columns:
+            - { name: constraint-name, type: text }
+            - { name: fields,          type: text }
+            - { name: type,            type: text, note: "PRIMARY KEY | UNIQUE" }
+        - role: data-table
+          purpose: foreign-keys-view
+          visible-when: "active-sub-tab == foreign-keys"
+          columns:
+            - { name: fk-name,   type: text }
+            - { name: field,     type: text }
+            - { name: ref-table, type: text }
+            - { name: ref-field, type: text }
+          interactions:
+            - role: button
+            - intent: add-logic-foreign-keys
+            - note: "Open the dialog to create a logical foreign-key, and the Agent NOT attempt to define the content of the dialog box"
+
+        - role: code-display
+          type: textarea
+          purpose: ddl-view
+          visible-when: "active-sub-tab == ddl"
+          note: "Read-only textarea displaying the CREATE TABLE SQL for the selected table"
+
+    - role: modal-dialog
+      purpose: new-connection-form
+      behavior:
+        note: "Supported database types: MySQL, PostgreSQL, Oracle, SQL Server, SQLite, ClickHouse. Test Connection action validates credentials before save — it is a distinct action from submit."
+      interactions:
+        - intent: submit
+          priority: primary
+        - intent: dismiss
+      components:
+        - role: form-field
+          purpose: connection-name
+        - role: form-field
+          type: select
+          purpose: database-type
+        - role: form-field
+          purpose: host
+        - role: form-field
+          type: number
+          purpose: port
+        - role: form-field
+          purpose: username
+        - role: form-field
+          type: password
+        - role: form-field
+          purpose: database-name
+        - role: form-field
+          type: textarea-json
+          purpose: other-parameters
+        - role: action-button
+          purpose: test-connection
+
+    - role: settings-panel
+      purpose: field-generator-config
+      layout: overlay
+      behavior:
+        note: "Non-blocking draggable floating panel — intended design differs from the prototype modal. Stays open while user works in the fields table; clicking a different field row updates active-field in-place without closing the panel. Must be dismissed explicitly. Generator type selector (auto-increment, random-value, sequence, enum, foreign-key-ref, computed) drives a contextual parameters field. Includes a live preview rendering 5 sample values."
+      state:
+        active-field:
+          type: entity-ref
+          nullable: true
+          default: null
+      interactions:
+        - intent: submit
+          priority: primary
+        - intent: dismiss
+      components:
+        - role: form-field
+          type: select
+          purpose: generator-type
+        - role: dynamic-slot
+          purpose: generator-parameters
+          note: "Renders entirely in code based on active generator-type. The system has dozens of generator types, each with its own parameter UI. Agent must reserve this layout region but must NOT attempt to define or scaffold its internal components — implementation is handled in code."

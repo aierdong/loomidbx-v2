@@ -1,0 +1,82 @@
+page:
+  role: dashboard-grid
+  purpose: post-login-home
+  layout: centered-column
+  responsive:
+    mobile: vertical-stack
+    inferred: false
+
+  spec:
+    summary: "登录后首页 — 两个核心功能入口（Schema 浏览、项目管理）加最近使用项目列表"
+    notes:
+      - "最近打开的项目列表首次进入为空，需要 empty-state 占位"
+      - "语言切换（select）和主题切换（button）为全局设置，状态持久化到配置文件中"
+
+  sections:
+    - role: navigation-hub
+      purpose: global-toolbar
+      layout: horizontal-strip-right-aligned
+      static: true
+      interactions:
+        - intent: language-switch
+          target: language-state
+        - intent: toggle-theme
+          target: theme-state
+        - intent: open-dialog
+          navigates-to: settings-dialog
+      components:
+        - role: form-field
+          type: select
+          purpose: language-switch
+        - role: action-button
+          type: icon-button-toggle
+          purpose: theme-toggle
+        - role: action-button
+          type: icon-button
+          purpose: settings-dialog
+
+    - role: navigation-hub
+      purpose: feature-entrance
+      layout: grid(2)
+      responsive:
+        mobile: vertical-stack
+      interactions:
+        - intent: navigate
+          navigates-to: schema
+        - intent: navigate
+          navigates-to: projects
+      components:
+        - role: nav-item
+          count: 2
+          fields:
+            - name: icon
+              type: display
+            - name: title
+              type: display
+            - name: description
+              type: display
+
+    - role: activity-feed
+      purpose: recent-projects
+      layout: vertical-stack
+      data:
+        source: recent-projects
+        type: collection
+        mutable: false
+      interactions:
+        - intent: select-item
+          navigates-to: project-detail
+      components:
+        - role: project-card
+          count: 3
+          fields:
+            - name: icon
+              type: display
+            - name: project-name
+              type: display
+            - name: meta
+              type: display
+              note: "数据库类型、表数量、最后生成时间，以分隔符拼接"
+            - name: action
+              type: display
+        - role: empty-state

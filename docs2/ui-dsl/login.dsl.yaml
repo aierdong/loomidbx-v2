@@ -1,0 +1,39 @@
+page:
+  role: auth-form
+  purpose: user-auth
+  layout: split-screen
+  responsive:
+    mobile: stacked
+    inferred: true
+
+  spec:
+    summary: "Unified auth page — single form handles both login and new user registration"
+    notes:
+      - "auth-upsert: backend determines login vs register based on whether email exists; no mode switch in UI"
+      - "responsive layout (mobile: stacked) is inferred — prototype has no media queries"
+      - "marketing panel content (copy, imagery) is not specified in prototype"
+
+  sections:
+    - role: auth-form
+      layout: centered-column
+      behavior: auth-upsert
+      interactions:
+        - intent: submit-auth
+          priority: primary
+          navigates-to: schema
+      components:
+        - role: oauth-button
+          provider: google
+        - role: oauth-button
+          provider: github
+        - role: form-field
+          type: email
+        - role: form-field
+          type: password
+        - role: form-field
+          type: checkbox
+          purpose: remember-session
+
+    - role: marketing-panel
+      layout: centered-column
+      static: true

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-CN"><head><script data-od-sandbox-shim="">(function(){
+  function makeStore(){
+    var data = {};
+    var api = {
+      getItem: function(k){ return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function(k, v){ data[k] = String(v); },
+      removeItem: function(k){ delete data[k]; },
+      clear: function(){ data = {}; },
+      key: function(i){ return Object.keys(data)[i] || null; }
+    };
+    Object.defineProperty(api, 'length', { get: function(){ return Object.keys(data).length; } });
+    return api;
+  }
+  function tryShim(name){
+    var works = false;
+    try { works = !!window[name] && typeof window[name].getItem === 'function'; void window[name].length; }
+    catch (_) { works = false; }
+    if (works) return;
+    try { Object.defineProperty(window, name, { configurable: true, value: makeStore() }); }
+    catch (_) { try { window[name] = makeStore(); } catch (__) {} }
+  }
+  tryShim('localStorage');
+  tryShim('sessionStorage');
+  document.addEventListener('click', (e) => {
+    if (!e.target || !(e.target instanceof Element)) return;
+    var link = e.target.closest('a[href]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (href === null) return;
+    var isAnchor = href.startsWith('#') || href === '';
+    if (isAnchor) {
+      e.preventDefault();
+      if (href === '' || href === '#') {
+        window.scrollTo({ top: 0 });
+        history.replaceState(null, '', ' ');
+      } else {
+        var targetId = href.slice(1);
+        var target = targetId ? document.getElementById(targetId) : null;
+        if (target) {
+          target.scrollIntoView();
+          location.hash === href && history.replaceState(null, '', ' ');
+          location.hash = href;
+        }
+      }
+    } else if (link.getAttribute('target') === '_blank') {
+      e.preventDefault();
+      let safe = false;
+      try {
+        var url = new URL(href, location.href);
+        safe =
+          url.protocol === 'http:' ||
+          url.protocol === 'https:' ||
+          url.protocol === 'mailto:';
+      } catch (_) {}
+      safe && window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  });
+})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoomiDBX</title>
+  <style>
+    :root {
+      --bg: #ffffff; --surface: #f7f8fa; --fg: #1c2b33; --fg-2: #5d6c7b;
+      --muted: #65676b; --border: #ced0d4; --border-soft: #e8eaed;
+      --accent: #0064e0; --accent-on: #ffffff;
+      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+      --text-xs: 11px; --text-sm: 13px; --text-base: 14px; --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px;
+      --radius: 8px; --radius-md: 12px;
+    }
+    [data-theme="dark"] {
+      --bg: #0d0f12; --surface: #161a1f; --fg: #e4e6eb; --fg-2: #b0b3b8;
+      --muted: #8a8d91; --border: #2d3136; --border-soft: #22262b;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); font-size: var(--text-base); color: var(--fg); background: var(--bg); min-height: 100vh; }
+    a { color: var(--accent); text-decoration: none; }
+
+    .topbar-right {
+      position: fixed; top: 20px; right: 24px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .topbar-right select, .topbar-right button, .topbar-right a.tb-btn {
+      padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-xs); background: var(--bg); color: var(--fg); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 3px; text-decoration: none;
+    }
+    .topbar-right select:hover, .topbar-right button:hover, .topbar-right a.tb-btn:hover {
+      border-color: var(--accent);
+    }
+
+    .page {
+      max-width: 720px; margin: 0 auto; padding: 80px 24px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 32px;
+    }
+    .brand-icon {
+      width: 48px; height: 48px; border-radius: 12px; background: var(--accent); color: var(--accent-on);
+      display: grid; place-items: center; font-size: 20px; font-weight: 700;
+    }
+    .brand h1 { font-size: var(--text-2xl); font-weight: 700; }
+    .subtitle { font-size: var(--text-sm); color: var(--muted); margin-bottom: 48px; line-height: 1.6; }
+
+    .nav-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 48px;
+    }
+    .nav-card {
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+      background: var(--bg); transition: border-color 0.15s, box-shadow 0.15s;
+      text-decoration: none; color: var(--fg);
+    }
+    .nav-card:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .nav-card .nc-icon {
+      width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+      background: var(--surface); color: var(--accent);
+    }
+    .nav-card .nc-icon svg { width: 20px; height: 20px; }
+    .nav-card .nc-title { font-weight: 600; font-size: var(--text-lg); }
+    .nav-card .nc-desc { font-size: var(--text-xs); color: var(--muted); line-height: 1.5; }
+
+    .recent-section h3 {
+      font-size: var(--text-sm); font-weight: 600; color: var(--fg-2);
+      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px;
+    }
+    .recent-list { display: flex; flex-direction: column; gap: 8px; }
+    .recent-card {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+      border: 1px solid var(--border-soft); border-radius: var(--radius);
+      background: var(--bg); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+      text-decoration: none; color: var(--fg);
+    }
+    .recent-card:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .recent-card .rc-icon {
+      width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;
+      background: var(--surface); color: var(--muted); flex-shrink: 0;
+    }
+    .recent-card .rc-icon svg { width: 18px; height: 18px; }
+    .recent-card .rc-body { flex: 1; min-width: 0; }
+    .recent-card .rc-name { font-weight: 600; font-size: var(--text-sm); }
+    .recent-card .rc-meta { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+    .recent-card .rc-action {
+      font-size: var(--text-xs); color: var(--accent); font-weight: 500; flex-shrink: 0;
+    }
+
+    @media (max-width: 560px) {
+      .nav-grid { grid-template-columns: 1fr; }
+      .page { padding: 48px 16px; }
+    }
+  </style>
+<style data-od-tweaks-bridge-style="">
+[data-od-tweaks-hidden] .tw-panel {
+  transform: translateX(calc(100% + 32px)) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.tw-restore { display: none !important; }
+</style><script data-od-tweaks-bridge="">(function(){
+  // Synchronously hide BEFORE the artifact body parses so the panel never
+  // flashes on initial paint. The host removes the attribute via postMessage
+  // once it knows the desired state.
+  document.documentElement.setAttribute('data-od-tweaks-hidden', '');
+
+  var suppressEcho = false;
+  var observer = null;
+
+  function panelEl(){ return document.querySelector('.tw-panel'); }
+
+  function applyClassesToPanel(visible){
+    var panel = panelEl();
+    if (panel) panel.classList.toggle('tw-hidden', !visible);
+  }
+
+  function setPanelVisible(visible){
+    suppressEcho = true;
+    document.documentElement.toggleAttribute('data-od-tweaks-hidden', !visible);
+    applyClassesToPanel(visible);
+    // Clear flag after the MutationObserver has had a chance to fire for this
+    // change so we don't echo our own host-driven toggles back to the host.
+    Promise.resolve().then(function(){ suppressEcho = false; });
+  }
+
+  function postState(){
+    var panel = panelEl();
+    if (!panel) return;
+    try {
+      parent.postMessage({
+        type: 'od:tweaks-panel-state',
+        visible: !panel.classList.contains('tw-hidden'),
+      }, '*');
+    } catch (e) {}
+  }
+
+  function postAvailability(){
+    try {
+      parent.postMessage({
+        type: 'od:tweaks-available',
+        available: !!panelEl(),
+      }, '*');
+    } catch (e) {}
+  }
+
+  function attachObserver(){
+    var panel = panelEl();
+    if (!panel || observer) return;
+    observer = new MutationObserver(function(){
+      if (suppressEcho) return;
+      postState();
+    });
+    observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  function onReady(){
+    // Capture the panel authored visibility BEFORE we apply the host hidden
+    // attribute. The bridge sets data-od-tweaks-hidden synchronously in head
+    // (before the body parses), so on entry to onReady the attribute is
+    // always present even though the artifact may have authored the panel
+    // as default-visible. Reading the panel class first is the only place
+    // we can still observe the author intent. Then drive the attribute,
+    // classes, and posted state from that captured value so a default
+    // visible tw-panel reports visible:true and the toolbar toggle starts
+    // ON. Issue surfaced in PR #1643 review.
+    var panel = panelEl();
+    var initialVisible = !!panel && !panel.classList.contains('tw-hidden');
+    document.documentElement.toggleAttribute('data-od-tweaks-hidden', !initialVisible);
+    applyClassesToPanel(initialVisible);
+    attachObserver();
+    postAvailability();
+    // Post the captured initial visibility so the toolbar toggle reflects
+    // the default state on mount. Without this the toggle reads OFF while
+    // a default-visible tw-panel artifact clearly shows its panel and the
+    // user would have to click toggle-on then toggle-off to actually hide.
+    postState();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onReady);
+  } else {
+    onReady();
+  }
+
+  window.addEventListener('message', function(ev){
+    if (!ev.data || ev.data.type !== 'od:tweaks-panel-visible') return;
+    setPanelVisible(!!ev.data.visible);
+  });
+})();</script></head>
+<body>
+  <div class="topbar-right" data-od-id="path-0">
+    <select id="lang-select" title="语言" data-od-id="path-0-0">
+      <option value="zh">中文</option>
+      <option value="en">EN</option>
+    </select>
+    <button onclick="toggleTheme()" title="切换主题" style="display:inline-flex;align-items:center;gap:3px;" data-od-id="path-0-1">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+    </button>
+    <a class="tb-btn" href="settings.html" title="系统设置" data-od-id="path-0-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    </a>
+  </div>
+
+  <div class="page" data-od-id="path-1">
+    <div class="brand">
+      <div class="brand-icon">L</div>
+      <div>
+        <h1 data-od-id="path-1-0-1-0">LoomiDBX</h1>
+      </div>
+    </div>
+    <p class="subtitle">数据库模拟数据生成工具 — 连接数据库、浏览 Schema、配置生成规则，一键生成逼真的模拟数据。</p>
+
+    <div class="nav-grid">
+      <a class="nav-card" href="schema.html" data-od-id="path-1-2-0">
+        <div class="nc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path></svg>
+        </div>
+        <div class="nc-title">Schema 浏览</div>
+        <div class="nc-desc">浏览数据库结构、表字段、约束和外键关系，配置字段生成规则</div>
+      </a>
+
+      <a class="nav-card" href="projects.html" data-od-id="path-1-2-1">
+        <div class="nc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <div class="nc-title">项目管理</div>
+        <div class="nc-desc">创建和管理数据生成项目，执行生成任务，查看执行记录</div>
+      </a>
+    </div>
+
+    <div class="recent-section">
+      <h3 data-od-id="path-1-3-0">最近打开的</h3>
+      <div class="recent-list">
+        <a class="recent-card" href="projects.html?open=proj-edit-dlg" data-od-id="path-1-3-1-0">
+          <div class="rc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
+          <div class="rc-body">
+            <div class="rc-name">电商演示数据</div>
+            <div class="rc-meta">生产-MySQL · 6 张表 · 最后生成 2026-05-28 10:30</div>
+          </div>
+          <span class="rc-action">查看项目 →</span>
+        </a>
+        <a class="recent-card" href="projects.html?open=proj-history-dlg&amp;project=p2" data-od-id="path-1-3-1-1">
+          <div class="rc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
+          <div class="rc-body">
+            <div class="rc-name">性能压测集</div>
+            <div class="rc-meta">测试-PostgreSQL · 4 张表 · 执行中…</div>
+          </div>
+          <span class="rc-action">查看记录 →</span>
+        </a>
+        <a class="recent-card" href="projects.html?open=proj-edit-dlg&amp;project=p3" data-od-id="path-1-3-1-2">
+          <div class="rc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
+          <div class="rc-body">
+            <div class="rc-name">开发环境填充</div>
+            <div class="rc-meta">生产-MySQL · 8 张表 · 最后生成 2026-05-26 09:10</div>
+          </div>
+          <span class="rc-action">查看项目 →</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    }
+  </script>
+
+
+<script data-od-snapshot-bridge="">(function(){
+  function copyComputedStyle(source, target){
+    if (!source || !target || source.nodeType !== 1 || target.nodeType !== 1) return;
+    var computed = window.getComputedStyle(source);
+    var style = target.getAttribute('style') || '';
+    for (var i = 0; i < computed.length; i++){
+      var prop = computed[i];
+      style += prop + ':' + computed.getPropertyValue(prop) + ';';
+    }
+    target.setAttribute('style', style);
+  }
+  function syncElementState(source, target){
+    var tag = source.tagName ? source.tagName.toLowerCase() : '';
+    if (tag === 'img' && source.currentSrc) target.setAttribute('src', source.currentSrc);
+    if (tag === 'input' || tag === 'textarea') target.setAttribute('value', source.value || '');
+    if (tag === 'canvas') {
+      try {
+        var img = document.createElement('img');
+        img.setAttribute('src', source.toDataURL('image/png'));
+        img.setAttribute('style', target.getAttribute('style') || '');
+        target.parentNode && target.parentNode.replaceChild(img, target);
+      } catch (_) {}
+    }
+  }
+  function inlineSnapshotStyles(originalRoot, cloneRoot){
+    copyComputedStyle(originalRoot, cloneRoot);
+    syncElementState(originalRoot, cloneRoot);
+    var originals = originalRoot.querySelectorAll('*');
+    var clones = cloneRoot.querySelectorAll('*');
+    var count = Math.min(originals.length, clones.length);
+    for (var i = 0; i < count; i++){
+      copyComputedStyle(originals[i], clones[i]);
+      syncElementState(originals[i], clones[i]);
+    }
+    var scripts = cloneRoot.querySelectorAll('script');
+    for (var s = scripts.length - 1; s >= 0; s--) scripts[s].remove();
+  }
+  function waitForImages(){
+    var imgs = Array.prototype.slice.call(document.images || []);
+    return Promise.all(imgs.map(function(img){
+      if (img.complete) return Promise.resolve();
+      return new Promise(function(resolve){
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    }));
+  }
+  function renderSnapshot(id){
+    var w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    var dpr = window.devicePixelRatio || 1;
+    var docW = Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
+    var docH = Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+    var clone = document.documentElement.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    inlineSnapshotStyles(document.documentElement, clone);
+    var serializer = new XMLSerializer();
+    var html = serializer.serializeToString(clone);
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<foreignObject x="' + (-window.scrollX || 0) + '" y="' + (-window.scrollY || 0) + '" width="' + docW + '" height="' + docH + '">' +
+      html +
+      '</foreignObject></svg>';
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(w * dpr));
+        canvas.height = Math.max(1, Math.floor(h * dpr));
+        var ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.scale(dpr, dpr);
+        ctx.drawImage(img, 0, 0, w, h);
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }, '*');
+      } catch (err) {
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+      }
+    };
+    img.onerror = function(){
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  window.addEventListener('message', function(ev){
+    var data = ev && ev.data;
+    if (!data || data.type !== 'od:snapshot' || !data.id) return;
+    waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+  });
+})();</script><script data-od-srcdoc-transport-activation="">(function(){
+  window.addEventListener('message', function(ev){
+    var data = ev && ev.data;
+    if (!data || data.type !== 'od:srcdoc-transport-activate' || typeof data.html !== 'string') return;
+    document.open();
+    document.write(data.html);
+    document.close();
+  });
+})();</script></body></html>

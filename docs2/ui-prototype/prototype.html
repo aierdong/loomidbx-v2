@@ -1,0 +1,1763 @@
+<!doctype html>
+<html lang="zh-CN"><head><script data-od-sandbox-shim="">(function(){
+  function makeStore(){
+    var data = {};
+    var api = {
+      getItem: function(k){ return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function(k, v){ data[k] = String(v); },
+      removeItem: function(k){ delete data[k]; },
+      clear: function(){ data = {}; },
+      key: function(i){ return Object.keys(data)[i] || null; }
+    };
+    Object.defineProperty(api, 'length', { get: function(){ return Object.keys(data).length; } });
+    return api;
+  }
+  function tryShim(name){
+    var works = false;
+    try { works = !!window[name] && typeof window[name].getItem === 'function'; void window[name].length; }
+    catch (_) { works = false; }
+    if (works) return;
+    try { Object.defineProperty(window, name, { configurable: true, value: makeStore() }); }
+    catch (_) { try { window[name] = makeStore(); } catch (__) {} }
+  }
+  tryShim('localStorage');
+  tryShim('sessionStorage');
+  document.addEventListener('click', (e) => {
+    if (!e.target || !(e.target instanceof Element)) return;
+    var link = e.target.closest('a[href]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (href === null) return;
+    var isAnchor = href.startsWith('#') || href === '';
+    if (isAnchor) {
+      e.preventDefault();
+      if (href === '' || href === '#') {
+        window.scrollTo({ top: 0 });
+        history.replaceState(null, '', ' ');
+      } else {
+        var targetId = href.slice(1);
+        var target = targetId ? document.getElementById(targetId) : null;
+        if (target) {
+          target.scrollIntoView();
+          location.hash === href && history.replaceState(null, '', ' ');
+          location.hash = href;
+        }
+      }
+    } else if (link.getAttribute('target') === '_blank') {
+      e.preventDefault();
+      let safe = false;
+      try {
+        var url = new URL(href, location.href);
+        safe =
+          url.protocol === 'http:' ||
+          url.protocol === 'https:' ||
+          url.protocol === 'mailto:';
+      } catch (_) {}
+      safe && window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  });
+})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoomiDBX</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f7f8fa;
+      --fg: #1c2b33;
+      --fg-2: #5d6c7b;
+      --muted: #65676b;
+      --border: #ced0d4;
+      --border-soft: #e8eaed;
+      --accent: #0064e0;
+      --accent-on: #ffffff;
+      --success: #31a24c;
+      --warn: #f7b928;
+      --danger: #e41e3f;
+      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+      --text-xs: 11px;
+      --text-sm: 13px;
+      --text-base: 14px;
+      --text-lg: 16px;
+      --text-xl: 20px;
+      --radius: 8px;
+      --sidebar-w: 56px;
+      --topbar-h: 48px;
+      /* sidebar */
+      --sb-bg: #1a1d21;
+      --sb-fg: #b0b3b8;
+      --sb-active: rgba(0,100,224,0.2);
+      --sb-active-fg: #47a5fa;
+      --sb-divider: rgba(255,255,255,0.08);
+      --sb-hover: rgba(255,255,255,0.08);
+    }
+    [data-theme="dark"] {
+      --bg: #0d0f12;
+      --surface: #161a1f;
+      --fg: #e4e6eb;
+      --fg-2: #b0b3b8;
+      --muted: #8a8d91;
+      --border: #2d3136;
+      --border-soft: #22262b;
+      --sb-bg: #0d0f12;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); font-size: var(--text-base); color: var(--fg); background: var(--bg); height: 100vh; overflow: hidden; }
+    button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    input, select, textarea { font: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* app layout */
+    .app { display: flex; height: 100vh; }
+    .sidebar {
+      width: var(--sidebar-w); min-width: var(--sidebar-w);
+      background: var(--sb-bg); color: var(--sb-fg);
+      display: flex; flex-direction: column; align-items: center;
+      padding: 12px 0; gap: 4px;
+    }
+    .sb-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--accent); color: var(--accent-on);
+      display: grid; place-items: center;
+      font-size: 14px; font-weight: 700;
+      margin-bottom: 4px; flex-shrink: 0;
+    }
+    .sb-ver { font-size: 9px; color: var(--sb-fg); opacity: 0.5; margin-bottom: 12px; }
+    .sb-btn {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: grid; place-items: center;
+      color: var(--sb-fg); transition: background 0.15s, color 0.15s;
+      position: relative;
+    }
+    .sb-btn:hover { background: var(--sb-hover); color: #e4e6eb; }
+    .sb-btn.active { background: var(--sb-active); color: var(--sb-active-fg); }
+    .sb-btn svg { width: 20px; height: 20px; }
+    .sb-btn .tooltip {
+      display: none; position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+      background: #1c1e21; color: #e4e6eb; padding: 4px 10px; border-radius: 6px;
+      font-size: 12px; white-space: nowrap; z-index: 50; pointer-events: none;
+    }
+    .sb-btn:hover .tooltip { display: block; }
+    .sb-spacer { flex: 1; }
+    .sb-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: #2d3136; color: var(--sb-fg);
+      display: grid; place-items: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    /* main */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      height: var(--topbar-h); min-height: var(--topbar-h);
+      border-bottom: 1px solid var(--border-soft);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; background: var(--bg);
+    }
+    .topbar-left { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
+    .topbar-left .bc { color: var(--muted); }
+    .topbar-left .bc-cur { color: var(--fg); font-weight: 600; }
+    .topbar-right { display: flex; align-items: center; gap: 6px; }
+    .topbar-right select, .topbar-right button {
+      padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-xs); background: var(--bg); color: var(--fg);
+    }
+    .content { flex: 1; overflow: hidden; position: relative; }
+
+    /* screens */
+    .screen { display: none; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* ─── Schema screen ─────────────────────────────────── */
+    .schema-screen { display: flex; width: 100%; height: 100%; }
+    .schema-left {
+      width: 260px; min-width: 260px;
+      border-right: 1px solid var(--border-soft);
+      display: flex; flex-direction: column; background: var(--bg);
+    }
+    .schema-toolbar {
+      display: flex; align-items: center; gap: 4px;
+      padding: 8px 10px; border-bottom: 1px solid var(--border-soft);
+      flex-wrap: wrap;
+    }
+    .schema-toolbar button, .schema-toolbar .tb-sep {
+      padding: 4px 6px; border-radius: 4px; font-size: var(--text-xs); color: var(--muted);
+      display: inline-flex; align-items: center; gap: 3px;
+    }
+    .schema-toolbar button:hover { background: var(--surface); color: var(--fg); }
+    .schema-toolbar .tb-sep { width: 1px; height: 16px; background: var(--border-soft); padding: 0; }
+    .schema-filter {
+      padding: 6px 10px; border-bottom: 1px solid var(--border-soft);
+    }
+    .schema-filter input {
+      width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-xs); background: var(--surface); color: var(--fg);
+    }
+    .schema-filter input:focus { outline: none; border-color: var(--accent); }
+    .tree-scroll { flex: 1; overflow-y: auto; padding: 6px 8px; }
+    .tree { font-size: var(--text-sm); }
+    .tree-item {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 6px; border-radius: 5px; cursor: pointer;
+      transition: background 0.1s; user-select: none;
+    }
+    .tree-item:hover { background: var(--surface); }
+    .tree-item.active { background: rgba(0,100,224,0.08); color: var(--accent); }
+    .tree-item .arrow {
+      width: 14px; height: 14px; display: grid; place-items: center;
+      color: var(--muted); flex-shrink: 0; transition: transform 0.15s;
+    }
+    .tree-item .arrow.open { transform: rotate(90deg); }
+    .tree-item .t-icon { width: 14px; height: 14px; color: var(--muted); flex-shrink: 0; }
+    .tree-item .t-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-item .t-badge {
+      font-size: 9px; padding: 1px 5px; border-radius: 3px;
+      background: rgba(49,162,76,0.12); color: var(--success); font-weight: 600;
+    }
+    .tree-item .t-badge.off { background: var(--surface); color: var(--muted); }
+    .tree-children { padding-left: 16px; }
+    .tree-children.collapsed { display: none; }
+
+    /* context menu */
+    .ctx-menu {
+      position: fixed; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 4px; min-width: 160px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200;
+      display: none; font-size: var(--text-sm);
+    }
+    .ctx-menu.open { display: block; }
+    .ctx-menu button {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 6px 10px; border-radius: 4px;
+      font-size: var(--text-sm); text-align: left;
+    }
+    .ctx-menu button:hover { background: var(--surface); }
+    .ctx-menu button svg { width: 14px; height: 14px; color: var(--muted); }
+    .ctx-menu .sep { height: 1px; background: var(--border-soft); margin: 3px 0; }
+
+    /* schema right */
+    .schema-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .tab-bar {
+      display: flex; align-items: center; gap: 0;
+      border-bottom: 1px solid var(--border-soft);
+      background: var(--surface); min-height: 36px;
+      overflow-x: auto; flex-shrink: 0;
+    }
+    .tab-bar::-webkit-scrollbar { height: 0; }
+    .tab-item {
+      display: flex; align-items: center; gap: 5px;
+      padding: 7px 14px; font-size: var(--text-sm); color: var(--muted);
+      border-right: 1px solid var(--border-soft);
+      cursor: pointer; white-space: nowrap;
+      transition: background 0.1s, color 0.1s;
+      position: relative;
+    }
+    .tab-item:hover { background: var(--bg); color: var(--fg); }
+    .tab-item.active { background: var(--bg); color: var(--fg); font-weight: 600; }
+    .tab-item .tab-close {
+      width: 16px; height: 16px; border-radius: 3px;
+      display: grid; place-items: center;
+      opacity: 0; transition: opacity 0.1s;
+    }
+    .tab-item:hover .tab-close, .tab-item.active .tab-close { opacity: 0.5; }
+    .tab-item .tab-close:hover { opacity: 1; background: var(--border-soft); }
+    .tab-item .tab-pin {
+      width: 14px; height: 14px; opacity: 0; transition: opacity 0.1s;
+      color: var(--muted);
+    }
+    .tab-item:hover .tab-pin { opacity: 0.4; }
+    .tab-item .tab-pin.pinned { opacity: 1; color: var(--accent); }
+    .tab-item .tab-pin:hover { opacity: 1; }
+    .tab-body { flex: 1; overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; }
+
+    /* empty state */
+    .empty-hint {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--muted); gap: 8px; font-size: var(--text-sm);
+    }
+    .empty-hint svg { width: 32px; height: 32px; opacity: 0.3; }
+
+    /* table detail */
+    .tbl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .tbl-head h3 { font-size: var(--text-lg); font-weight: 700; }
+    .tbl-meta { font-size: var(--text-xs); color: var(--muted); }
+    .sub-tabs-wrap { display: flex; gap: 0; min-height: 0; flex: 1; }
+    .sub-tabs {
+      display: flex; flex-direction: column; gap: 0;
+      border-right: 1px solid var(--border-soft); padding-right: 0;
+      min-width: 80px; flex-shrink: 0;
+    }
+    .sub-tab {
+      padding: 8px 16px; font-size: var(--text-sm); color: var(--muted);
+      border-right: 2px solid transparent; cursor: pointer;
+      text-align: left; white-space: nowrap;
+    }
+    .sub-tab:hover { color: var(--fg); background: var(--surface); }
+    .sub-tab.active { color: var(--accent); border-right-color: var(--accent); background: var(--surface); }
+    .sub-content { flex: 1; overflow-y: auto; padding-left: 16px; }
+    table.dt { width: 100%; font-size: var(--text-sm); border-collapse: collapse; }
+    table.dt th, table.dt td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+    table.dt th { font-size: var(--text-xs); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface); }
+    .type-b { display: inline-block; padding: 1px 6px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; background: var(--surface); color: var(--fg-2); }
+    .key-b { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-right: 3px; }
+    .key-b.pk { background: rgba(0,100,224,0.1); color: var(--accent); }
+    .key-b.fk { background: rgba(0,100,224,0.06); color: #5a8abf; }
+    .key-b.nn { background: rgba(228,30,63,0.08); color: var(--danger); }
+    .key-b.uq { background: rgba(49,162,76,0.08); color: var(--success); }
+    .mono { font-family: var(--font-mono); }
+    table.dt td[style*="cursor:pointer"]:hover .badge { opacity: 0.75; }
+    .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+    .badge-ok { background: rgba(49,162,76,0.12); color: var(--success); }
+    .badge-err { background: rgba(228,30,63,0.12); color: var(--danger); }
+    .badge-run { background: rgba(0,100,224,0.1); color: var(--accent); }
+    .badge-draft { background: var(--surface); color: var(--muted); }
+    .badge-warn { background: rgba(247,185,40,0.12); color: #b8860b; }
+
+    /* ─── Project screen ────────────────────────────────── */
+    .project-screen { flex-direction: column; overflow-y: auto; padding: 20px; gap: 16px; }
+    .proj-header { display: flex; align-items: center; justify-content: space-between; }
+    .proj-header h2 { font-size: var(--text-xl); font-weight: 700; }
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: var(--text-sm); font-weight: 500; transition: background 0.15s; }
+    .btn-primary { background: var(--accent); color: var(--accent-on); }
+    .btn-primary:hover { background: #0143b5; }
+    .btn-ghost { color: var(--fg); }
+    .btn-ghost:hover { background: var(--surface); }
+    .btn-sm { padding: 4px 10px; font-size: var(--text-xs); }
+
+    /* project list cards */
+    .proj-list { display: flex; flex-direction: column; gap: 8px; }
+    .proj-card {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px; border: 1px solid var(--border-soft);
+      border-radius: var(--radius); background: var(--bg);
+      cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .proj-card:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .proj-card .pc-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: grid; place-items: center;
+      background: var(--surface); color: var(--muted); flex-shrink: 0;
+    }
+    .proj-card .pc-icon svg { width: 18px; height: 18px; }
+    .proj-card .pc-body { flex: 1; min-width: 0; }
+    .proj-card .pc-name { font-weight: 600; font-size: var(--text-sm); }
+    .proj-card .pc-tables { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+    .proj-card .pc-table-tag {
+      font-size: 10px; padding: 2px 6px; border-radius: 3px;
+      background: var(--surface); color: var(--fg-2);
+    }
+    .proj-card .pc-table-tag.more { color: var(--muted); }
+    .proj-card .pc-time { font-size: var(--text-xs); color: var(--muted); margin-top: 4px; }
+    .proj-card .pc-actions { display: flex; gap: 2px; flex-shrink: 0; }
+    .proj-card .pc-actions button {
+      width: 28px; height: 28px; border-radius: 5px;
+      display: grid; place-items: center; color: var(--muted);
+    }
+    .proj-card .pc-actions button:hover { background: var(--surface); color: var(--fg); }
+    .proj-card .pc-actions button.danger:hover { background: rgba(228,30,63,0.08); color: var(--danger); }
+    .proj-card .pc-actions button svg { width: 14px; height: 14px; }
+
+    /* project edit dialog */
+    .settings-screen { flex-direction: column; overflow-y: auto; padding: 20px; gap: 20px; }
+    .settings-screen h2 { font-size: var(--text-xl); font-weight: 700; }
+    .setting-group { border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden; }
+    .setting-group-title { font-size: var(--text-sm); font-weight: 600; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border-soft); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-row .sr-label { font-size: var(--text-sm); }
+    .setting-row .sr-desc { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+    .setting-row .sr-control { flex-shrink: 0; }
+    .setting-row input[type="text"], .setting-row select {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-sm); background: var(--bg); color: var(--fg); min-width: 200px;
+    }
+
+    /* ─── Login screen ──────────────────────────────────── */
+    .login-screen {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      background: var(--bg);
+    }
+    .login-screen.active { display: flex; }
+    .login-container {
+      display: flex; width: 100%; height: 100%;
+    }
+    .login-left {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px;
+    }
+    .login-form { width: 340px; }
+    .login-form h2 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    .login-form .lf-sub { font-size: var(--text-sm); color: var(--muted); margin-bottom: 28px; }
+    .login-form .field { margin-bottom: 14px; }
+    .login-form .field label { display: block; font-size: var(--text-xs); font-weight: 600; color: var(--fg-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .login-form .field input {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-sm); background: var(--bg); color: var(--fg);
+    }
+    .login-form .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,100,224,0.1); }
+    .login-form .btn-primary { width: 100%; padding: 10px; margin-top: 8px; justify-content: center; font-size: var(--text-sm); }
+    .login-form .lf-switch { text-align: center; margin-top: 16px; font-size: var(--text-sm); color: var(--muted); }
+    .login-form .lf-switch a { cursor: pointer; }
+    /* oauth */
+    .login-form .lf-oauth { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+    .login-form .lf-oauth-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 8px 12px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+      font-size: var(--text-sm); font-weight: 500; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .login-form .lf-oauth-btn:hover { background: var(--surface); }
+    /* separator */
+    .login-form .lf-sep { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .login-form .lf-sep-line { flex: 1; height: 1px; background: var(--border-soft); }
+    .login-form .lf-sep-text { font-size: var(--text-sm); color: var(--muted); }
+    /* remember me */
+    .login-form .lf-remember {
+      display: flex; align-items: center; gap: 6px;
+      font-size: var(--text-sm); color: var(--fg); cursor: pointer;
+      margin-bottom: 14px;
+    }
+    .login-form .lf-remember input { width: 14px; height: 14px; accent-color: var(--accent); }
+    .login-right {
+      flex: 1; background: var(--surface); display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: var(--text-sm);
+    }
+
+    /* dialog */
+    .dlg-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: none; place-items: center; z-index: 100;
+    }
+    .dlg-overlay.open { display: grid; }
+    .dlg {
+      background: var(--bg); border-radius: 12px; padding: 24px;
+      width: 440px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    }
+    .dlg h3 { font-size: var(--text-lg); font-weight: 700; margin-bottom: 18px; }
+    .dlg .field { margin-bottom: 12px; }
+    .dlg .field label { display: block; font-size: var(--text-xs); font-weight: 600; color: var(--fg-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dlg .field input, .dlg .field select, .dlg .field textarea {
+      width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-sm); background: var(--bg); color: var(--fg);
+    }
+    .dlg .field input:focus, .dlg .field select:focus { outline: none; border-color: var(--accent); }
+    .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* project edit dialog */
+    .pe-table-list { display: flex; flex-direction: column; gap: 6px; }
+    .pe-table-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border: 1px solid var(--border-soft);
+      border-radius: 6px; background: var(--surface);
+    }
+    .pe-order {
+      width: 24px; height: 24px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: var(--accent); color: var(--accent-on);
+      font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .pe-table-info { flex: 1; min-width: 0; }
+    .pe-table-name { font-weight: 600; font-size: var(--text-sm); font-family: var(--font-mono); }
+    .pe-table-meta { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+    .pe-quantity { display: flex; align-items: center; gap: 6px; }
+    .pe-quantity label { font-size: var(--text-xs); color: var(--muted); }
+    .pe-quantity input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: var(--text-sm); }
+    .pe-remove { width: 28px; height: 28px; border-radius: 4px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; }
+    .pe-remove:hover { background: rgba(228,30,63,0.08); color: var(--danger); }
+
+    /* project history */
+    .ph-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px; border: 1px solid var(--border-soft); border-radius: 6px;
+    }
+    .ph-row .ph-status { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
+    .ph-row .ph-status.ok { background: rgba(49,162,76,0.12); color: var(--success); }
+    .ph-row .ph-status.fail { background: rgba(228,30,63,0.12); color: var(--danger); }
+    .ph-row .ph-status.run { background: rgba(0,100,224,0.1); color: var(--accent); }
+    .ph-row .ph-info { flex: 1; }
+    .ph-row .ph-name { font-weight: 600; font-size: var(--text-sm); }
+    .ph-row .ph-detail { font-size: var(--text-xs); color: var(--muted); }
+    .ph-row .ph-meta { font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); text-align: right; }
+
+    /* pin tooltip */
+    .pin-hint {
+      position: fixed; background: #1c1e21; color: #e4e6eb;
+      padding: 5px 10px; border-radius: 6px; font-size: 11px;
+      z-index: 200; pointer-events: none; white-space: nowrap;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .pin-hint.show { opacity: 1; }
+  </style>
+<style data-od-tweaks-bridge-style="">
+[data-od-tweaks-hidden] .tw-panel {
+  transform: translateX(calc(100% + 32px)) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.tw-restore { display: none !important; }
+</style><script data-od-tweaks-bridge="">(function(){
+  // Synchronously hide BEFORE the artifact body parses so the panel never
+  // flashes on initial paint. The host removes the attribute via postMessage
+  // once it knows the desired state.
+  document.documentElement.setAttribute('data-od-tweaks-hidden', '');
+
+  var suppressEcho = false;
+  var observer = null;
+
+  function panelEl(){ return document.querySelector('.tw-panel'); }
+
+  function applyClassesToPanel(visible){
+    var panel = panelEl();
+    if (panel) panel.classList.toggle('tw-hidden', !visible);
+  }
+
+  function setPanelVisible(visible){
+    suppressEcho = true;
+    document.documentElement.toggleAttribute('data-od-tweaks-hidden', !visible);
+    applyClassesToPanel(visible);
+    // Clear flag after the MutationObserver has had a chance to fire for this
+    // change so we don't echo our own host-driven toggles back to the host.
+    Promise.resolve().then(function(){ suppressEcho = false; });
+  }
+
+  function postState(){
+    var panel = panelEl();
+    if (!panel) return;
+    try {
+      parent.postMessage({
+        type: 'od:tweaks-panel-state',
+        visible: !panel.classList.contains('tw-hidden'),
+      }, '*');
+    } catch (e) {}
+  }
+
+  function postAvailability(){
+    try {
+      parent.postMessage({
+        type: 'od:tweaks-available',
+        available: !!panelEl(),
+      }, '*');
+    } catch (e) {}
+  }
+
+  function attachObserver(){
+    var panel = panelEl();
+    if (!panel || observer) return;
+    observer = new MutationObserver(function(){
+      if (suppressEcho) return;
+      postState();
+    });
+    observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  function onReady(){
+    // Capture the panel authored visibility BEFORE we apply the host hidden
+    // attribute. The bridge sets data-od-tweaks-hidden synchronously in head
+    // (before the body parses), so on entry to onReady the attribute is
+    // always present even though the artifact may have authored the panel
+    // as default-visible. Reading the panel class first is the only place
+    // we can still observe the author intent. Then drive the attribute,
+    // classes, and posted state from that captured value so a default
+    // visible tw-panel reports visible:true and the toolbar toggle starts
+    // ON. Issue surfaced in PR #1643 review.
+    var panel = panelEl();
+    var initialVisible = !!panel && !panel.classList.contains('tw-hidden');
+    document.documentElement.toggleAttribute('data-od-tweaks-hidden', !initialVisible);
+    applyClassesToPanel(initialVisible);
+    attachObserver();
+    postAvailability();
+    // Post the captured initial visibility so the toolbar toggle reflects
+    // the default state on mount. Without this the toggle reads OFF while
+    // a default-visible tw-panel artifact clearly shows its panel and the
+    // user would have to click toggle-on then toggle-off to actually hide.
+    postState();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onReady);
+  } else {
+    onReady();
+  }
+
+  window.addEventListener('message', function(ev){
+    if (!ev.data || ev.data.type !== 'od:tweaks-panel-visible') return;
+    setPanelVisible(!!ev.data.visible);
+  });
+})();</script></head>
+<body>
+  <!-- Login Screen (overlay) -->
+  <div class="login-screen" id="login-screen" data-od-id="path-0">
+    <div class="login-container" data-od-id="path-0-0">
+      <div class="login-left">
+        <div class="login-form" id="login-form" data-od-id="path-0-0-0-0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px;">
+            <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);color:var(--accent-on);display:grid;place-items:center;font-weight:700;font-size:13px;">L</div>
+            <span style="font-weight:700;font-size:15px;">LoomiDBX</span>
+          </div>
+          <h2 data-od-id="path-0-0-0-0-1">登录</h2>
+          <p class="lf-sub" data-od-id="path-0-0-0-0-2">输入邮箱和密码，新用户将自动注册</p>
+
+          <!-- OAuth providers -->
+          <div class="lf-oauth">
+            <button class="lf-oauth-btn" onclick="handleLogin()">
+              <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span>Google</span>
+            </button>
+            <button class="lf-oauth-btn" onclick="handleLogin()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--fg)"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+              <span>GitHub</span>
+            </button>
+          </div>
+
+          <!-- Separator -->
+          <div class="lf-sep">
+            <span class="lf-sep-line"></span>
+            <span class="lf-sep-text">or</span>
+            <span class="lf-sep-line"></span>
+          </div>
+
+          <!-- Email / Password -->
+          <div class="field" data-od-id="path-0-0-0-0-4">
+            <label>邮箱</label>
+            <input type="email" placeholder="name@example.com">
+          </div>
+          <div class="field" data-od-id="path-0-0-0-0-5">
+            <label>密码</label>
+            <input type="password" placeholder="输入密码">
+          </div>
+
+          <!-- Remember me -->
+          <label class="lf-remember">
+            <input type="checkbox">
+            <span>记住我</span>
+          </label>
+
+          <button class="btn btn-primary" onclick="handleLogin()" id="login-btn" data-od-id="path-0-0-0-0-7">Continue</button>
+        </div>
+      </div>
+      <div class="login-right">
+        <div style="text-align:center;max-width:280px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="margin-bottom:12px;"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path></svg>
+          <div style="font-weight:600;color:var(--fg);margin-bottom:6px;">数据库模拟数据生成工具</div>
+          <div style="font-size:var(--text-xs);">生成逼真、可复用、符合约束的模拟数据</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div class="app" id="app" data-od-id="path-1">
+    <!-- Sidebar -->
+    <aside class="sidebar" data-od-id="path-1-0">
+      <div class="sb-logo" data-od-id="path-1-0-0">L</div>
+      <div class="sb-ver" data-od-id="path-1-0-1">v0.1.0</div>
+
+      <button class="sb-btn active" data-screen="schema" onclick="switchScreen('schema')" data-od-id="path-1-0-2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path></svg>
+        <span class="tooltip">Schema 浏览</span>
+      </button>
+      <button class="sb-btn" data-screen="projects" onclick="switchScreen('projects')" data-od-id="path-1-0-3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <span class="tooltip">项目管理</span>
+      </button>
+      <button class="sb-btn" data-screen="settings" onclick="switchScreen('settings')" data-od-id="path-1-0-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span class="tooltip">系统设置</span>
+      </button>
+
+      <div class="sb-spacer" data-od-id="path-1-0-5"></div>
+
+      <button class="sb-btn" onclick="document.getElementById('login-screen').classList.add('active')" data-od-id="path-1-0-6">
+        <div class="sb-avatar">CG</div>
+        <span class="tooltip">cg · 退出登录</span>
+      </button>
+    </aside>
+
+    <!-- Main -->
+    <div class="main" data-od-id="path-1-1">
+      <!-- Topbar -->
+      <header class="topbar" data-od-id="path-1-1-0">
+        <div class="topbar-left" data-od-id="path-1-1-0-0">
+          <span class="bc">LoomiDBX</span>
+          <span style="color:var(--border)">/</span>
+          <span class="bc-cur" id="breadcrumb-cur" data-od-id="path-1-1-0-0-2">Schema 浏览</span>
+        </div>
+        <div class="topbar-right" data-od-id="path-1-1-0-1">
+          <select id="lang-select" title="语言" data-od-id="path-1-1-0-1-0">
+            <option value="zh">中文</option>
+            <option value="en">EN</option>
+          </select>
+          <button onclick="toggleTheme()" title="切换主题" style="display:inline-flex;align-items:center;gap:3px;" data-od-id="path-1-1-0-1-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div class="content">
+
+        <!-- ═══ Schema Browse ═══ -->
+        <div class="screen active" id="screen-schema" data-od-id="path-1-1-1-0">
+          <div class="schema-screen" data-od-id="path-1-1-1-0-0">
+            <!-- Left panel -->
+            <div class="schema-left">
+              <div class="schema-toolbar">
+                <button onclick="openDlg('conn-dlg')" title="新建连接" data-od-id="path-1-1-1-0-0-0-0-0">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <div class="tb-sep"></div>
+                <button onclick="refreshTree()" title="刷新" data-od-id="path-1-1-1-0-0-0-0-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                </button>
+                <button onclick="expandAll()" title="全部展开" data-od-id="path-1-1-1-0-0-0-0-3">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+                </button>
+                <button onclick="collapseAll()" title="全部折叠" data-od-id="path-1-1-1-0-0-0-0-4">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+                </button>
+                <div class="tb-sep"></div>
+                <button onclick="toggleConnectedOnly()" id="btn-connected-only" title="仅显示已连接" data-od-id="path-1-1-1-0-0-0-0-6">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
+              <div class="schema-filter">
+                <input type="text" placeholder="过滤..." id="tree-filter" oninput="filterTree(this.value)" data-od-id="path-1-1-1-0-0-0-1-0">
+              </div>
+              <div class="tree-scroll">
+                <div class="tree" id="schema-tree" data-od-id="path-1-1-1-0-0-0-2-0"></div>
+              </div>
+            </div>
+
+            <!-- Right panel -->
+            <div class="schema-right">
+              <div class="tab-bar" id="schema-tab-bar" data-od-id="path-1-1-1-0-0-1-0">
+                <!-- tabs rendered by JS -->
+              </div>
+              <div class="tab-body" id="schema-tab-body" data-od-id="path-1-1-1-0-0-1-1">
+                <div class="empty-hint" id="schema-empty" data-od-id="path-1-1-1-0-0-1-1-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                  <span>在左侧选择一张表以浏览其结构</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Project Management ═══ -->
+        <div class="screen" id="screen-projects" data-od-id="path-1-1-1-1">
+          <div class="project-screen" data-od-id="path-1-1-1-1-0">
+            <div class="proj-header">
+              <h2 data-od-id="path-1-1-1-1-0-0-0">项目管理</h2>
+              <button class="btn btn-primary" onclick="openDlg('proj-dlg')" data-od-id="path-1-1-1-1-0-0-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                新建项目
+              </button>
+            </div>
+            <div class="proj-list" id="proj-list" data-od-id="path-1-1-1-1-0-1"></div>
+          </div>
+        </div>
+
+        <!-- ═══ System Settings ═══ -->
+        <div class="screen" id="screen-settings" data-od-id="path-1-1-1-2">
+          <div class="settings-screen" data-od-id="path-1-1-1-2-0">
+            <h2 data-od-id="path-1-1-1-2-0-0">系统设置</h2>
+
+            <div class="setting-group">
+              <div class="setting-group-title">数据存储</div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">存储位置</div>
+                  <div class="sr-desc">所有配置数据存储在本地 SQLite 文件中</div>
+                </div>
+                <div class="sr-control" style="display:flex;gap:6px;align-items:center;">
+                  <input type="text" value="~/.loomidbx/data.db" readonly="" style="min-width:240px;">
+                  <button class="btn btn-ghost btn-sm" data-od-id="path-1-1-1-2-0-1-1-1-1">迁移</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">存储后端</div>
+                  <div class="sr-desc">可切换为外部数据库</div>
+                </div>
+                <div class="sr-control">
+                  <select>
+                    <option>SQLite (本地)</option>
+                    <option>MySQL</option>
+                    <option>PostgreSQL</option>
+                    <option>Oracle</option>
+                    <option>MSSQL</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-group-title">LLM 配置</div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">服务商</div>
+                  <div class="sr-desc">用于 AI 辅助数据生成（即将推出）</div>
+                </div>
+                <div class="sr-control">
+                  <select>
+                    <option>OpenAI</option>
+                    <option>Anthropic</option>
+                    <option>阿里云百炼</option>
+                    <option>DeepSeek</option>
+                    <option>自定义 (OpenAI 兼容)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">API Key</div>
+                </div>
+                <div class="sr-control" style="display:flex;gap:6px;align-items:center;">
+                  <input type="text" placeholder="sk-..." style="min-width:240px;">
+                  <button class="btn btn-ghost btn-sm" data-od-id="path-1-1-1-2-0-2-2-1-1">验证</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">Base URL</div>
+                  <div class="sr-desc">本地部署时填写自定义接口地址</div>
+                </div>
+                <div class="sr-control">
+                  <input type="text" placeholder="https://api.openai.com/v1">
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-group-title">外观</div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">主题</div>
+                </div>
+                <div class="sr-control">
+                  <select onchange="setTheme(this.value)" id="settings-theme" data-od-id="path-1-1-1-2-0-3-1-1-0">
+                    <option value="light">浅色</option>
+                    <option value="dark">深色</option>
+                  </select>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">语言</div>
+                </div>
+                <div class="sr-control">
+                  <select id="settings-lang" data-od-id="path-1-1-1-2-0-3-2-1-0">
+                    <option value="zh">中文</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-group-title">隐私</div>
+              <div class="setting-row">
+                <div>
+                  <div class="sr-label">数据采集说明</div>
+                  <div class="sr-desc">软件仅回传账号标识、版本、启动记录。不会采集连接信息、Schema 内容或生成数据。</div>
+                </div>
+                <div class="sr-control">
+                  <button class="btn btn-ghost btn-sm" data-od-id="path-1-1-1-2-0-4-1-1-0">查看详情</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Context Menu ═══ -->
+  <div class="ctx-menu" id="ctx-menu" data-od-id="path-2"></div>
+
+  <!-- ═══ Pin Hint Tooltip ═══ -->
+  <div class="pin-hint" id="pin-hint" data-od-id="path-3">钉住此标签页，切换表时不会被覆盖</div>
+
+  <!-- ═══ Dialogs ═══ -->
+  <!-- New/Edit Connection -->
+  <div class="dlg-overlay" id="conn-dlg" onclick="if(event.target===this)closeDlg('conn-dlg')" data-od-id="path-4">
+    <div class="dlg" data-od-id="path-4-0">
+      <h3 id="conn-dlg-title" data-od-id="path-4-0-0">新建连接</h3>
+      <div class="form-row">
+        <div class="field"><label>连接名称</label><input type="text" placeholder="例如: 测试-MySQL"></div>
+        <div class="field"><label>数据库类型</label><select><option>MySQL</option><option>PostgreSQL</option><option>Oracle</option><option>SQL Server</option><option>SQLite</option><option>ClickHouse</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>主机地址</label><input type="text" placeholder="10.0.1.100"></div>
+        <div class="field"><label>端口</label><input type="text" placeholder="3306"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>用户名</label><input type="text" placeholder="root"></div>
+        <div class="field"><label>密码</label><input type="password" placeholder="••••••••"></div>
+      </div>
+      <div class="field"><label>数据库名</label><input type="text" placeholder="可选，连接后选择"></div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('conn-dlg')" data-od-id="path-4-0-5-0">取消</button>
+        <button class="btn btn-ghost" data-od-id="path-4-0-5-1">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          测试连接
+        </button>
+        <button class="btn btn-primary" onclick="closeDlg('conn-dlg')" data-od-id="path-4-0-5-2">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Project -->
+  <div class="dlg-overlay" id="proj-dlg" onclick="if(event.target===this)closeDlg('proj-dlg')" data-od-id="path-5">
+    <div class="dlg" data-od-id="path-5-0">
+      <h3 data-od-id="path-5-0-0">新建项目</h3>
+      <div class="field"><label>项目名称</label><input type="text" placeholder="例如: 电商演示数据"></div>
+      <div class="field"><label>描述</label><textarea rows="2" placeholder="项目用途说明" style="resize:vertical;"></textarea></div>
+      <div class="field"><label>数据库连接</label><select><option>生产-MySQL (ecommerce_db)</option><option>测试-PostgreSQL (test_db)</option></select></div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('proj-dlg')" data-od-id="path-5-0-4-0">取消</button>
+        <button class="btn btn-primary" onclick="closeDlg('proj-dlg')" data-od-id="path-5-0-4-1">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Field Rule -->
+  <div class="dlg-overlay" id="rule-dlg" onclick="if(event.target===this)closeDlg('rule-dlg')" data-od-id="path-6">
+    <div class="dlg" data-od-id="path-6-0">
+      <h3 id="rule-dlg-title" data-od-id="path-6-0-0">配置字段规则</h3>
+      <div class="field"><label>生成方式</label>
+        <select><option>自增 (AUTO_INCREMENT)</option><option>随机值</option><option>序列</option><option>枚举值</option><option>外键关联</option><option>计算值</option></select>
+      </div>
+      <div class="field"><label>参数</label><input type="text" placeholder="根据生成方式填写"></div>
+      <div style="margin-top:12px;padding:12px;background:var(--surface);border-radius:8px;">
+        <div style="font-size:var(--text-xs);font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">预览</div>
+        <div class="mono" style="font-size:var(--text-sm);display:flex;gap:8px;flex-wrap:wrap;">
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">1</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">2</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">3</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">4</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">5</span>
+        </div>
+      </div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('rule-dlg')" data-od-id="path-6-0-4-0">取消</button>
+        <button class="btn btn-primary" onclick="closeDlg('rule-dlg')" data-od-id="path-6-0-4-1">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Edit -->
+  <div class="dlg-overlay" id="proj-edit-dlg" onclick="if(event.target===this)closeDlg('proj-edit-dlg')" data-od-id="path-7">
+    <div class="dlg" style="width:560px;" data-od-id="path-7-0">
+      <h3 data-od-id="path-7-0-0">编辑项目</h3>
+      <div class="field"><label>项目名称</label><input type="text" value="电商演示数据"></div>
+      <div class="field"><label>描述</label><textarea rows="2" style="resize:vertical;">客户演示用完整电商数据集</textarea></div>
+      <div style="margin-top:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-2);text-transform:uppercase;letter-spacing:0.04em;">数据表配置</label>
+          <button class="btn btn-ghost btn-sm" onclick="addTableToProject()" data-od-id="path-7-0-3-0-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            添加表
+          </button>
+        </div>
+        <div class="pe-table-list" id="pe-table-list" data-od-id="path-7-0-3-1">
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-0">
+            <div class="pe-order">1</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">users</div>
+              <div class="pe-table-meta">public · users</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="1000" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-0-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-1">
+            <div class="pe-order">2</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">orders</div>
+              <div class="pe-table-meta">public · orders</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="5000" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-1-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-2">
+            <div class="pe-order">3</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">products</div>
+              <div class="pe-table-meta">public · products</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="2000" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-2-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-3">
+            <div class="pe-order">4</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">categories</div>
+              <div class="pe-table-meta">public · categories</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="100" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-3-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-4">
+            <div class="pe-order">5</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">order_items</div>
+              <div class="pe-table-meta">public · order_items</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="20000" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-4-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div class="pe-table-item" data-od-id="path-7-0-3-1-5">
+            <div class="pe-order">6</div>
+            <div class="pe-table-info">
+              <div class="pe-table-name">reviews</div>
+              <div class="pe-table-meta">public · reviews</div>
+            </div>
+            <div class="pe-quantity">
+              <label>数量</label>
+              <input type="number" value="5000" min="1" style="width:80px;">
+            </div>
+            <button class="pe-remove" onclick="this.closest('.pe-table-item').remove();updatePeOrder()" data-od-id="path-7-0-3-1-5-3">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px;">
+          顺序决定数据生成顺序。外键依赖的表（如 order_items 依赖 orders）需在父表之后生成。
+        </div>
+      </div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('proj-edit-dlg')" data-od-id="path-7-0-4-0">取消</button>
+        <button class="btn btn-primary" onclick="closeDlg('proj-edit-dlg')" data-od-id="path-7-0-4-1">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project History -->
+  <div class="dlg-overlay" id="proj-history-dlg" onclick="if(event.target===this)closeDlg('proj-history-dlg')" data-od-id="path-8">
+    <div class="dlg" style="width:480px;" data-od-id="path-8-0">
+      <h3 data-od-id="path-8-0-0">执行记录</h3>
+      <div id="ph-list" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;" data-od-id="path-8-0-1"></div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('proj-history-dlg')" data-od-id="path-8-0-2-0">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ─── Data ──────────────────────────────────────────── */
+    const connections = [
+      { id: 'c1', name: '生产-MySQL', type: 'MySQL', addr: '10.0.1.100:3306', status: 'connected', color: '#0064e0' },
+      { id: 'c2', name: '测试-PostgreSQL', type: 'Pg', addr: '10.0.2.50:5432', status: 'connected', color: '#31a24c' },
+      { id: 'c3', name: '预发-Oracle', type: 'Or', addr: '10.0.3.20:1521', status: 'disconnected', color: '#e41e3f' },
+      { id: 'c4', name: '报表-MSSQL', type: 'MS', addr: '10.0.4.80:1433', status: 'connected', color: '#f7b928' },
+    ];
+
+    const treeData = {
+      c1: {
+        databases: {
+          ecommerce_db: {
+            schemas: {
+              public: ['users', 'orders', 'products', 'order_items', 'categories', 'reviews']
+            }
+          }
+        }
+      },
+      c2: {
+        databases: {
+          test_db: {
+            schemas: {
+              public: ['test_users', 'test_orders']
+            }
+          }
+        }
+      },
+      c3: {
+        databases: {
+          preprod_db: {
+            schemas: {
+              app: ['app_users', 'app_sessions']
+            }
+          }
+        }
+      },
+      c4: {
+        databases: {
+          report_db: {
+            schemas: {
+              dbo: ['daily_sales', 'monthly_summary']
+            }
+          }
+        }
+      }
+    };
+
+    const tableMeta = {
+      users: { fields: 6, constraints: 3, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '用户主键', gen: '未配置' },
+          { name: 'username', type: 'VARCHAR(50)', keys: ['uq','nn'], def: '—', comment: '用户名', gen: '随机用户名' },
+          { name: 'email', type: 'VARCHAR(100)', keys: ['uq','nn'], def: '—', comment: '邮箱地址', gen: '随机邮箱' },
+          { name: 'phone', type: 'VARCHAR(20)', keys: [], def: 'NULL', comment: '手机号', gen: '随机手机号' },
+          { name: 'status', type: 'TINYINT', keys: ['nn'], def: '1', comment: '状态: 0=禁用 1=正常', gen: '枚举 [0,1]' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ]
+      },
+      orders: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '订单主键', gen: '未配置' },
+          { name: 'user_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '下单用户', gen: '外键 → users.id' },
+          { name: 'total', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '订单金额', gen: '随机金额' },
+          { name: 'status', type: 'VARCHAR(20)', keys: ['nn'], def: 'pending', comment: '订单状态', gen: '枚举' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ]
+      },
+      products: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '商品主键', gen: '未配置' },
+          { name: 'name', type: 'VARCHAR(200)', keys: ['nn'], def: '—', comment: '商品名称', gen: '随机商品名' },
+          { name: 'price', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '价格', gen: '随机金额' },
+          { name: 'category_id', type: 'BIGINT', keys: ['fk'], def: 'NULL', comment: '分类', gen: '外键 → categories.id' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ]
+      },
+      order_items: { fields: 5, constraints: 3, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '主键', gen: '未配置' },
+          { name: 'order_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '所属订单', gen: '外键 → orders.id' },
+          { name: 'product_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '商品', gen: '外键 → products.id' },
+          { name: 'quantity', type: 'INT', keys: ['nn'], def: '1', comment: '数量', gen: '随机 1-10' },
+          { name: 'unit_price', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '单价', gen: '复制 product.price' },
+        ]
+      },
+      categories: { fields: 3, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '分类主键', gen: '未配置' },
+          { name: 'name', type: 'VARCHAR(100)', keys: ['uq','nn'], def: '—', comment: '分类名', gen: '枚举' },
+          { name: 'sort_order', type: 'INT', keys: [], def: '0', comment: '排序', gen: '序列' },
+        ]
+      },
+      reviews: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '评论主键', gen: '未配置' },
+          { name: 'user_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '评论用户', gen: '外键 → users.id' },
+          { name: 'product_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '商品', gen: '外键 → products.id' },
+          { name: 'rating', type: 'TINYINT', keys: ['nn'], def: '5', comment: '评分 1-5', gen: '随机 1-5' },
+          { name: 'content', type: 'TEXT', keys: [], def: 'NULL', comment: '评论内容', gen: '随机文本' },
+        ]
+      },
+    };
+
+    const projects = [
+      { id: 'p1', name: '电商演示数据', desc: '客户演示用完整电商数据集', conn: '生产-MySQL', db: 'ecommerce_db', tables: 6, rows: 12400, status: 'done', updated: '2026-05-28 10:30',
+        execHistory: [
+          { name: '电商数据生成 #3', time: '2026-05-28 10:30', duration: '2m 14s', rows: 12400, status: 'ok' },
+          { name: '电商数据生成 #2', time: '2026-05-27 16:45', duration: '1m 58s', rows: 8200, status: 'warn', detail: 'order_items 部分失败' },
+          { name: '电商数据生成 #1', time: '2026-05-27 14:20', duration: '2m 05s', rows: 12400, status: 'ok' },
+        ]
+      },
+      { id: 'p2', name: '性能压测集', desc: '百万级数据压测', conn: '测试-PostgreSQL', db: 'test_db', tables: 4, rows: 1000000, status: 'running', updated: '2026-05-28 11:00',
+        execHistory: [
+          { name: '性能压测集 #1', time: '2026-05-28 11:00', duration: '执行中…', rows: null, status: 'run' },
+        ]
+      },
+      { id: 'p3', name: '开发环境填充', desc: '本地开发用基础数据', conn: '生产-MySQL', db: 'ecommerce_db', tables: 8, rows: null, status: 'draft', updated: '2026-05-27 15:20',
+        execHistory: [
+          { name: '开发环境首次填充', time: '2026-05-26 09:10', duration: '0m 42s', rows: 3100, status: 'fail', detail: '连接超时' },
+        ]
+      },
+    ];
+
+    /* ─── State ─────────────────────────────────────────── */
+    let currentScreen = 'schema';
+    let connectedOnly = false;
+    let openTabs = []; // [{id, table, pinned}]
+    let activeTabId = null;
+
+    /* ─── Screen switching ──────────────────────────────── */
+    const screenLabels = { schema: 'Schema 浏览', projects: '项目管理', settings: '系统设置' };
+    function switchScreen(id) {
+      currentScreen = id;
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen-' + id).classList.add('active');
+      document.querySelectorAll('.sb-btn[data-screen]').forEach(b => b.classList.toggle('active', b.dataset.screen === id));
+      document.getElementById('breadcrumb-cur').textContent = screenLabels[id] || id;
+      if (id === 'projects') renderProjects();
+    }
+
+    /* ─── Theme ─────────────────────────────────────────── */
+    function toggleTheme() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      setTheme(isDark ? 'light' : 'dark');
+    }
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      const sel = document.getElementById('settings-theme');
+      if (sel) sel.value = t;
+    }
+
+    /* ─── Login ─────────────────────────────────────────── */
+    function handleLogin() {
+      document.getElementById('login-screen').classList.remove('active');
+    }
+
+    /* ─── Tree rendering ────────────────────────────────── */
+    function renderTree() {
+      const tree = document.getElementById('schema-tree');
+      const filter = document.getElementById('tree-filter').value.toLowerCase();
+      let html = '';
+
+      connections.forEach(conn => {
+        if (connectedOnly && conn.status !== 'connected') return;
+        if (filter && !conn.name.toLowerCase().includes(filter)) {
+          // check deeper
+          let hasMatch = false;
+          const dbData = treeData[conn.id];
+          if (dbData) {
+            for (const db of Object.keys(dbData.databases)) {
+              for (const schema of Object.keys(dbData.databases[db].schemas)) {
+                if (dbData.databases[db].schemas[schema].some(t => t.includes(filter))) hasMatch = true;
+              }
+            }
+          }
+          if (!hasMatch) return;
+        }
+
+        const connOpen = conn.status === 'connected';
+        const statusBadge = conn.status === 'connected'
+          ? '<span class="t-badge">ON</span>'
+          : '<span class="t-badge off">OFF</span>';
+
+        html += `<div class="tree-item${connOpen ? '' : ''}" data-conn="${conn.id}" data-type="conn" oncontextmenu="showCtx(event,'conn','${conn.id}')" onclick="toggleTreeNode(this)">
+          <span class="arrow${connOpen ? ' open' : ''}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+          <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span class="t-label">${conn.name}</span>
+          ${statusBadge}
+        </div>`;
+
+        if (!connOpen) {
+          html += `<div class="tree-children collapsed" data-conn="${conn.id}"></div>`;
+          return;
+        }
+
+        const dbData = treeData[conn.id];
+        if (!dbData) return;
+
+        html += `<div class="tree-children${connOpen ? '' : ' collapsed'}" data-conn="${conn.id}">`;
+        for (const db of Object.keys(dbData.databases)) {
+          const dbHasMatch = !filter || db.includes(filter) || Object.keys(dbData.databases[db].schemas).some(s => {
+            return dbData.databases[db].schemas[s].some(t => t.includes(filter));
+          });
+          if (!dbHasMatch) continue;
+
+          html += `<div class="tree-item" data-type="db" onclick="toggleTreeNode(this)">
+            <span class="arrow open"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+            <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+            <span class="t-label">${db}</span>
+          </div>`;
+
+          html += `<div class="tree-children">`;
+          for (const schema of Object.keys(dbData.databases[db].schemas)) {
+            const tables = dbData.databases[db].schemas[schema];
+            const schemaHasMatch = !filter || schema.includes(filter) || tables.some(t => t.includes(filter));
+            if (!schemaHasMatch) continue;
+
+            html += `<div class="tree-item" data-type="schema" onclick="toggleTreeNode(this)">
+              <span class="arrow open"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+              <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/></svg>
+              <span class="t-label">${schema}</span>
+            </div>`;
+
+            html += `<div class="tree-children">`;
+            tables.forEach(t => {
+              if (filter && !t.includes(filter)) return;
+              html += `<div class="tree-item" data-type="table" data-table="${t}" data-conn-id="${conn.id}" data-db="${db}" data-schema="${schema}"
+                onclick="selectTable('${t}','${conn.id}','${db}','${schema}')"
+                oncontextmenu="showCtx(event,'table','${t}','${conn.id}')">
+                <span class="arrow" style="visibility:hidden"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+                <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                <span class="t-label">${t}</span>
+              </div>`;
+            });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
+
+      tree.innerHTML = html;
+    }
+
+    function toggleTreeNode(el) {
+      const arrow = el.querySelector('.arrow');
+      const children = el.nextElementSibling;
+      if (children && children.classList.contains('tree-children')) {
+        arrow.classList.toggle('open');
+        children.classList.toggle('collapsed');
+      }
+    }
+
+    function expandAll() {
+      document.querySelectorAll('#schema-tree .tree-children').forEach(c => c.classList.remove('collapsed'));
+      document.querySelectorAll('#schema-tree .arrow').forEach(a => a.classList.add('open'));
+    }
+    function collapseAll() {
+      document.querySelectorAll('#schema-tree .tree-children').forEach(c => c.classList.add('collapsed'));
+      document.querySelectorAll('#schema-tree .arrow').forEach(a => a.classList.remove('open'));
+    }
+    function refreshTree() { renderTree(); }
+    function filterTree(v) { renderTree(); }
+    function toggleConnectedOnly() {
+      connectedOnly = !connectedOnly;
+      document.getElementById('btn-connected-only').style.color = connectedOnly ? 'var(--accent)' : '';
+      renderTree();
+    }
+
+    /* ─── Context menu ──────────────────────────────────── */
+    function showCtx(e, type, id, connId) {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = document.getElementById('ctx-menu');
+      let html = '';
+
+      if (type === 'conn') {
+        const conn = connections.find(c => c.id === id);
+        const isConnected = conn.status === 'connected';
+        html = `
+          <button onclick="closeCtx();toggleConn('${id}')">${isConnected ? '断开连接' : '连接'}</button>
+          <button onclick="closeCtx();refreshConn('${id}')">刷新 (重新扫描)</button>
+          <div class="sep"></div>
+          <button onclick="closeCtx();editConn('${id}')">编辑</button>
+          <button onclick="closeCtx();deleteConn('${id}')" style="color:var(--danger)">删除</button>
+        `;
+      } else if (type === 'table') {
+        html = `
+          <button onclick="closeCtx();selectTable('${id}','${connId}','','')">在当前标签页打开</button>
+          <button onclick="closeCtx();openInNewTab('${id}','${connId}')">在新标签页打开</button>
+        `;
+      }
+
+      menu.innerHTML = html;
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      menu.classList.add('open');
+    }
+    function closeCtx() { document.getElementById('ctx-menu').classList.remove('open'); }
+    document.addEventListener('click', closeCtx);
+
+    function toggleConn(id) {
+      const conn = connections.find(c => c.id === id);
+      conn.status = conn.status === 'connected' ? 'disconnected' : 'connected';
+      renderTree();
+    }
+    function refreshConn(id) { renderTree(); }
+    function editConn(id) { openDlg('conn-dlg'); }
+    function deleteConn(id) {
+      const idx = connections.findIndex(c => c.id === id);
+      if (idx > -1) connections.splice(idx, 1);
+      renderTree();
+    }
+
+    /* ─── Tab management ────────────────────────────────── */
+    function selectTable(table, connId, db, schema) {
+      // highlight tree item
+      document.querySelectorAll('#schema-tree .tree-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll(`#schema-tree .tree-item[data-table="${table}"]`).forEach(i => i.classList.add('active'));
+
+      // check if tab already open
+      const existing = openTabs.find(t => t.table === table);
+      if (existing) {
+        activateTab(existing.id);
+        return;
+      }
+
+      // if there's an unpinned active tab, replace it
+      const unpinnedActive = openTabs.find(t => !t.pinned && t.id === activeTabId);
+      if (unpinnedActive) {
+        unpinnedActive.table = table;
+        unpinnedActive.connId = connId;
+        renderTabs();
+        activateTab(unpinnedActive.id);
+        return;
+      }
+
+      // create new tab
+      openInNewTab(table, connId);
+    }
+
+    function openInNewTab(table, connId) {
+      const tabId = 'tab-' + Date.now();
+      openTabs.push({ id: tabId, table, connId, pinned: false });
+      renderTabs();
+      activateTab(tabId);
+    }
+
+    function activateTab(tabId) {
+      activeTabId = tabId;
+      const tab = openTabs.find(t => t.id === tabId);
+      document.querySelectorAll('#schema-tab-bar .tab-item').forEach(t => t.classList.toggle('active', t.dataset.tabId === tabId));
+      if (tab) renderTableDetail(tab.table);
+    }
+
+    function closeTab(tabId, e) {
+      if (e) e.stopPropagation();
+      const idx = openTabs.findIndex(t => t.id === tabId);
+      if (idx === -1) return;
+      openTabs.splice(idx, 1);
+      if (activeTabId === tabId) {
+        activeTabId = openTabs.length > 0 ? openTabs[Math.max(0, idx - 1)].id : null;
+      }
+      renderTabs();
+      if (activeTabId) {
+        const tab = openTabs.find(t => t.id === activeTabId);
+        if (tab) renderTableDetail(tab.table);
+      } else {
+        document.getElementById('schema-tab-body').innerHTML = `
+          <div class="empty-hint" id="schema-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            <span>在左侧选择一张表以浏览其结构</span>
+          </div>`;
+      }
+    }
+
+    function togglePin(tabId, e) {
+      if (e) e.stopPropagation();
+      const tab = openTabs.find(t => t.id === tabId);
+      if (!tab) return;
+      tab.pinned = !tab.pinned;
+      renderTabs();
+
+      // show hint
+      if (tab.pinned) {
+        const hint = document.getElementById('pin-hint');
+        const rect = e.target.getBoundingClientRect();
+        hint.style.left = rect.left + 'px';
+        hint.style.top = (rect.bottom + 6) + 'px';
+        hint.classList.add('show');
+        setTimeout(() => hint.classList.remove('show'), 2000);
+      }
+    }
+
+    function renderTabs() {
+      const bar = document.getElementById('schema-tab-bar');
+      bar.innerHTML = openTabs.map(t => {
+        const pinClass = t.pinned ? ' pinned' : '';
+        return `<div class="tab-item${t.id === activeTabId ? ' active' : ''}" data-tab-id="${t.id}" onclick="activateTab('${t.id}')">
+          <svg class="tab-pin${pinClass}" viewBox="0 0 24 24" fill="${t.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" onclick="togglePin('${t.id}',event)" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 2-2H6a2 2 0 0 0 2 2 1 1 0 0 1 1 1z"/></svg>
+          <span>${t.table}</span>
+          <span class="tab-close" onclick="closeTab('${t.id}',event)">×</span>
+        </div>`;
+      }).join('');
+    }
+
+    /* ─── Table detail rendering ────────────────────────── */
+    function renderTableDetail(table) {
+      const meta = tableMeta[table];
+      if (!meta) {
+        document.getElementById('schema-tab-body').innerHTML = `<div class="empty-hint"><span>${table} — 暂无元数据</span></div>`;
+        return;
+      }
+
+      const keyBadge = (k) => {
+        const m = { pk: 'PK', fk: 'FK', nn: 'NN', uq: 'UQ' };
+        return `<span class="key-b ${k}">${m[k]}</span>`;
+      };
+
+      document.getElementById('schema-tab-body').innerHTML = `
+        <div class="tbl-head">
+          <div>
+            <h3>${table}</h3>
+            <div class="tbl-meta">${meta.db} · ${meta.schema} · ${meta.fields} 个字段 · ${meta.constraints} 个约束</div>
+          </div>
+          <button class="btn btn-ghost btn-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            重新扫描
+          </button>
+        </div>
+        <div class="sub-tabs-wrap">
+        <div class="sub-tabs">
+          <button class="sub-tab active" onclick="switchSubTab(this,'sub-fields')">字段</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-constraints')">约束</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-fk')">外键</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-ddl')">DDL</button>
+        </div>
+        <div class="sub-content">
+        <div id="sub-fields">
+          <table class="dt">
+            <thead><tr><th>#</th><th>字段名</th><th>类型</th><th>约束</th><th>默认值</th><th>注释</th><th>生成器</th></tr></thead>
+            <tbody>
+              ${meta.cols.map((c, i) => {
+                const isAutoPk = c.keys.includes('pk') && c.def === 'AUTO_INCREMENT';
+                const isUnconfigured = c.gen === '未配置';
+                let genCell = '';
+                if (isAutoPk) {
+                  genCell = '';
+                } else if (isUnconfigured) {
+                  genCell = `<td style="cursor:pointer" onclick="openDlg('rule-dlg')"><span class="badge badge-draft">&lt;不使用&gt;</span></td>`;
+                } else {
+                  genCell = `<td style="cursor:pointer" onclick="openDlg('rule-dlg')"><span class="badge badge-run">${c.gen}</span></td>`;
+                }
+                return `<tr>
+                <td class="mono" style="color:var(--muted)">${i+1}</td>
+                <td class="mono" style="font-weight:600">${c.name}</td>
+                <td><span class="type-b">${c.type}</span></td>
+                <td>${c.keys.map(keyBadge).join('')}</td>
+                <td class="mono" style="font-size:var(--text-xs)">${c.def}</td>
+                <td style="font-size:var(--text-xs);color:var(--muted)">${c.comment}</td>
+                ${genCell}
+              </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-constraints" style="display:none">
+          <table class="dt">
+            <thead><tr><th>约束名</th><th>字段</th><th>类型</th></tr></thead>
+            <tbody>
+              ${meta.cols.filter(c => c.keys.length > 0).map(c => c.keys.map(k => {
+                const m = { pk: 'Primary Key', fk: 'Foreign Key', nn: 'Not Null', uq: 'Unique' };
+                return `<tr><td class="mono">${c.name}_${k}</td><td class="mono">${c.name}</td><td><span class="key-b ${k}">${m[k]}</span></td></tr>`;
+              }).join('')).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-fk" style="display:none">
+          <table class="dt">
+            <thead><tr><th>外键名</th><th>字段</th><th>引用表</th><th>引用字段</th></tr></thead>
+            <tbody>
+              ${meta.cols.filter(c => c.keys.includes('fk')).map(c => {
+                const refMatch = c.gen.match(/外键\s*→\s*(\w+)\.(\w+)/);
+                const refTable = refMatch ? refMatch[1] : '—';
+                const refField = refMatch ? refMatch[2] : '—';
+                return `<tr><td class="mono">fk_${c.name}</td><td class="mono">${c.name}</td><td class="mono">${refTable}</td><td class="mono">${refField}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-ddl" style="display:none">
+          <pre style="background:#1a1d21;color:#e4e6eb;padding:16px;border-radius:8px;font-family:var(--font-mono);font-size:12px;line-height:1.6;overflow-x:auto;">CREATE TABLE ${meta.schema}.${table} (
+${meta.cols.map(c => `  ${c.name.padEnd(14)} ${c.type.padEnd(16)} ${c.keys.includes('nn') ? 'NOT NULL' : ''}${c.def !== '—' && c.def !== 'NULL' ? ' DEFAULT ' + c.def : ''}`).join(',\n')}
+);</pre>
+        </div>
+        </div>
+        </div>
+      `;
+    }
+
+    function switchSubTab(btn, contentId) {
+      btn.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const content = btn.closest('.sub-tabs-wrap').querySelector('.sub-content');
+      content.querySelectorAll('[id^="sub-"]').forEach(c => c.style.display = 'none');
+      document.getElementById(contentId).style.display = '';
+    }
+
+    /* ─── Projects rendering ────────────────────────────── */
+    const tableTagMap = {
+      p1: ['users', 'orders', 'products', 'categories', 'order_items', 'reviews'],
+      p2: ['test_users', 'test_orders', 'test_products', 'test_logs'],
+      p3: ['users', 'orders', 'products', 'categories', 'order_items', 'reviews', 'payments', 'addresses'],
+    };
+
+    function renderProjects() {
+      const list = document.getElementById('proj-list');
+
+      list.innerHTML = projects.map(p => {
+        const tableNames = tableTagMap[p.id] || [];
+        const displayTables = tableNames.slice(0, 4);
+        const moreCount = tableNames.length > 4 ? tableNames.length - 4 : 0;
+
+        return `<div class="proj-card" onclick="openProjectEdit('${p.id}')">
+          <div class="pc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+          <div class="pc-body">
+            <div class="pc-name">${p.name}</div>
+            <div class="pc-tables">
+              ${displayTables.map(t => `<span class="pc-table-tag">${t}</span>`).join('')}
+              ${moreCount > 0 ? `<span class="pc-table-tag more">+${moreCount}</span>` : ''}
+            </div>
+            <div class="pc-time">最后生成: ${p.updated}</div>
+          </div>
+          <div class="pc-actions" onclick="event.stopPropagation()">
+            <button title="执行" onclick="execProject('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+            <button title="执行记录" onclick="showProjectDetail('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+            <button class="danger" title="删除" onclick="deleteProject('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function openProjectEdit(id) { openDlg('proj-edit-dlg'); }
+    function execProject(id) { console.log('exec', id); }
+    function deleteProject(id) { const idx = projects.findIndex(p => p.id === id); if (idx > -1) projects.splice(idx, 1); renderProjects(); }
+    function updatePeOrder() {
+      document.querySelectorAll('#pe-table-list .pe-table-item').forEach((item, i) => {
+        item.querySelector('.pe-order').textContent = i + 1;
+      });
+    }
+    function addTableToProject() { /* TODO: open table picker */ }
+
+    function showProjectDetail(id) {
+      const p = projects.find(pr => pr.id === id);
+      if (!p) return;
+
+      const statusMap = { ok: ['ok','成功'], fail: ['fail','失败'], warn: ['ok','部分失败'], run: ['run','执行中'] };
+
+      document.getElementById('ph-list').innerHTML = p.execHistory.map(e => {
+        const [statusCls, badgeText] = statusMap[e.status] || ['run', '未知'];
+        return `<div class="ph-row">
+          <div class="ph-status ${statusCls}">
+            ${e.status === 'ok' ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' :
+              e.status === 'fail' ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' :
+              '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'}
+          </div>
+          <div class="ph-info">
+            <div class="ph-name">${e.name}</div>
+            <div class="ph-detail">${e.detail || e.time}</div>
+          </div>
+          <div class="ph-meta">
+            <span class="badge badge-${statusCls === 'ok' ? 'ok' : statusCls === 'fail' ? 'err' : 'run'}">${badgeText}</span>
+            <div style="margin-top:2px;">${e.rows ? e.rows.toLocaleString() + ' 行' : '—'} · ${e.duration}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      openDlg('proj-history-dlg');
+    }
+
+    /* ─── Dialogs ───────────────────────────────────────── */
+    function openDlg(id) { document.getElementById(id).classList.add('open'); }
+    function closeDlg(id) { document.getElementById(id).classList.remove('open'); }
+
+    /* ─── Init ──────────────────────────────────────────── */
+    renderTree();
+    renderProjects();
+    // open users tab by default
+    openInNewTab('users', 'c1');
+  </script>
+
+<script data-od-snapshot-bridge="">(function(){
+  function copyComputedStyle(source, target){
+    if (!source || !target || source.nodeType !== 1 || target.nodeType !== 1) return;
+    var computed = window.getComputedStyle(source);
+    var style = target.getAttribute('style') || '';
+    for (var i = 0; i < computed.length; i++){
+      var prop = computed[i];
+      style += prop + ':' + computed.getPropertyValue(prop) + ';';
+    }
+    target.setAttribute('style', style);
+  }
+  function syncElementState(source, target){
+    var tag = source.tagName ? source.tagName.toLowerCase() : '';
+    if (tag === 'img' && source.currentSrc) target.setAttribute('src', source.currentSrc);
+    if (tag === 'input' || tag === 'textarea') target.setAttribute('value', source.value || '');
+    if (tag === 'canvas') {
+      try {
+        var img = document.createElement('img');
+        img.setAttribute('src', source.toDataURL('image/png'));
+        img.setAttribute('style', target.getAttribute('style') || '');
+        target.parentNode && target.parentNode.replaceChild(img, target);
+      } catch (_) {}
+    }
+  }
+  function inlineSnapshotStyles(originalRoot, cloneRoot){
+    copyComputedStyle(originalRoot, cloneRoot);
+    syncElementState(originalRoot, cloneRoot);
+    var originals = originalRoot.querySelectorAll('*');
+    var clones = cloneRoot.querySelectorAll('*');
+    var count = Math.min(originals.length, clones.length);
+    for (var i = 0; i < count; i++){
+      copyComputedStyle(originals[i], clones[i]);
+      syncElementState(originals[i], clones[i]);
+    }
+    var scripts = cloneRoot.querySelectorAll('script');
+    for (var s = scripts.length - 1; s >= 0; s--) scripts[s].remove();
+  }
+  function waitForImages(){
+    var imgs = Array.prototype.slice.call(document.images || []);
+    return Promise.all(imgs.map(function(img){
+      if (img.complete) return Promise.resolve();
+      return new Promise(function(resolve){
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    }));
+  }
+  function renderSnapshot(id){
+    var w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    var dpr = window.devicePixelRatio || 1;
+    var docW = Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
+    var docH = Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+    var clone = document.documentElement.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    inlineSnapshotStyles(document.documentElement, clone);
+    var serializer = new XMLSerializer();
+    var html = serializer.serializeToString(clone);
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<foreignObject x="' + (-window.scrollX || 0) + '" y="' + (-window.scrollY || 0) + '" width="' + docW + '" height="' + docH + '">' +
+      html +
+      '</foreignObject></svg>';
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(w * dpr));
+        canvas.height = Math.max(1, Math.floor(h * dpr));
+        var ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.scale(dpr, dpr);
+        ctx.drawImage(img, 0, 0, w, h);
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }, '*');
+      } catch (err) {
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+      }
+    };
+    img.onerror = function(){
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  window.addEventListener('message', function(ev){
+    var data = ev && ev.data;
+    if (!data || data.type !== 'od:snapshot' || !data.id) return;
+    waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+  });
+})();</script><script data-od-srcdoc-transport-activation="">(function(){
+  window.addEventListener('message', function(ev){
+    var data = ev && ev.data;
+    if (!data || data.type !== 'od:srcdoc-transport-activate' || typeof data.html !== 'string') return;
+    document.open();
+    document.write(data.html);
+    document.close();
+  });
+})();</script></body></html>

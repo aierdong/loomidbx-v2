@@ -1,0 +1,98 @@
+page:
+  role: settings-panel
+  layout: overlay
+
+  spec:
+    summary: "System settings dialog for LoomiDBX — configures SQLite storage path, LLM credentials, appearance, and privacy disclosure"
+    notes:
+      - "SQLite path is NOT free-text: read-only path display is populated via OS native file-picker triggered by an adjacent browse button"
+      - "Privacy 'view details' button opens a modal-dialog overlay; modal body content is not yet specified (placeholder)"
+      - "Save validates that the SQLite path is an absolute path; invalid path blocks submit and shows inline field error"
+      - "Responsive layout is inferred as stacked — prototype has no media queries"
+
+  state:
+    theme:
+      values: [light, dark]
+      default: light
+      persistent: true
+    language:
+      values: [zh, en]
+      default: zh
+      persistent: true
+    privacy-detail-modal:
+      values: [open, closed]
+      persistent: false
+
+  data:
+    source: app-settings
+    type: singleton
+    mutable: true
+
+  interactions:
+    - intent: submit
+      priority: primary
+    - intent: dismiss
+      priority: secondary
+
+  responsive:
+    mobile: stacked
+    inferred: true
+
+  sections:
+    - role: settings-panel
+      purpose: sqlite-storage-config
+      layout: horizontal-strip
+      behavior:
+        note: "path-display is read-only; browse button triggers OS native file/folder picker; selected absolute path populates path-display; absolute-path format validated on page submit"
+      components:
+        - role: form-field
+          purpose: sqlite-path-display
+        - role: action-button
+          purpose: browse
+          interactions:
+            - intent: pick-file-path
+
+    - role: settings-panel
+      purpose: llm-config
+      layout: vertical-stack
+      components:
+        - role: form-field
+          purpose: base-url
+        - role: form-field
+          type: password
+          purpose: api-key
+        - role: form-field
+          purpose: model-name
+
+    - role: settings-panel
+      purpose: appearance-config
+      layout: vertical-stack
+      interactions:
+        - intent: toggle-theme
+          target: theme
+        - intent: toggle
+          target: language
+      components:
+        - role: form-field
+          type: select
+          purpose: theme
+        - role: form-field
+          type: select
+          purpose: language
+
+    - role: settings-panel
+      purpose: privacy-disclosure
+      layout: horizontal-strip
+      interactions:
+        - intent: toggle
+          target: privacy-detail-modal
+      components:
+        - role: action-button
+          purpose: view-privacy-detail
+
+    - role: modal-dialog
+      purpose: privacy-data-collection-detail
+      behavior:
+        note: "body content is TBD/placeholder; conditionally rendered when privacy-detail-modal is open"
+      interactions:
+        - intent: dismiss

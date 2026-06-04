@@ -1,0 +1,164 @@
+page:
+  role: entity-list
+  purpose: project-management
+  layout: sidebar-shell
+
+  spec:
+    summary: "Project CRUD page — lists LoomiDBX projects each with an ordered table configuration; supports create, edit, run, delete, and execution history"
+    notes:
+      - "create and edit share project-form modal; dialog-mode set by create-project vs edit-project trigger"
+      - "execution-history covers completed runs only; in-flight execution uses a separate progress UI (not yet specified)"
+      - "responsive layout inferred — prototype has no media queries"
+
+  sections:
+    - role: navigation-hub
+      layout: vertical-stack
+      zones:
+        top:
+          components:
+            - role: brand-logo
+        middle:
+          interactions:
+            - intent: navigate
+              navigates-to: schema-browser
+            - intent: navigate
+              navigates-to: projects
+        bottom:
+          interactions:
+            - intent: sign-out
+
+    - role: global-header
+      purpose: app-top-bar
+      layout: horizontal-strip
+      interactions:
+        - intent: toggle-theme
+        - intent: navigate
+          navigates-to: settings
+      components:
+        - role: form-field
+          type: select
+          purpose: language-switcher
+
+    - role: entity-list
+      layout: vertical-stack
+      data:
+        source: projects
+        type: collection
+        mutable: true
+      interactions:
+        - intent: create-project
+          priority: primary
+          target: project-form
+          sets-mode: create
+      components:
+        - role: data-row
+          purpose: project-card
+          fields:
+            - name: table-tags
+              type: tag-list
+              max-visible: 4
+              overflow: badge
+          interactions:
+            - intent: edit-project
+              trigger: row-body
+              target: project-form
+              sets-mode: edit
+            - intent: run-project
+              trigger: row-action
+            - intent: open-dialog
+              target: execution-history
+              trigger: row-action
+              disabled-when: "exec-count == 0"
+            - intent: delete-project
+              priority: destructive
+              trigger: row-action
+
+    - role: modal-dialog
+      purpose: project-form
+      state:
+        dialog-mode:
+          values: [create, edit]
+          persistent: false
+      interactions:
+        - intent: submit
+          priority: primary
+        - intent: dismiss
+      components:
+        - role: form-field
+          purpose: project-name
+        - role: form-field
+          type: textarea
+          purpose: description
+        - role: form-field
+          type: select
+          purpose: db-connection
+          visible-when: "dialog-mode == create"
+        - role: inline-help
+          purpose: table-generation-order
+          visible-when: "dialog-mode == edit"
+        - role: data-row
+          purpose: table-config-item
+          visible-when: "dialog-mode == edit"
+          fields:
+            - name: ordered-index
+              type: number
+            - name: table-name
+              type: text
+            - name: schema-table-meta
+              type: display
+            - name: quantity
+              type: number-input
+          interactions:
+            - intent: remove-item
+        - role: form-field
+          type: multi-select
+          purpose: add-table
+          searchable: true
+          visible-when: "dialog-mode == edit"
+
+    - role: modal-dialog
+      purpose: execution-history
+      data:
+        source: project-exec-history
+        type: collection
+        mutable: false
+      interactions:
+        - intent: dismiss
+      components:
+        - role: data-row
+          purpose: history-record
+          fields:
+            - name: execution-name
+              type: text
+            - name: started-at
+              type: datetime
+            - name: status
+              type: badge
+              values: [success, failed, partial-failed]
+            - name: total-row-count
+              type: number
+            - name: duration
+              type: duration
+          interactions:
+            - intent: expand
+              target: table-exec-detail
+          components:
+            - role: data-row
+              purpose: table-exec-detail
+              layout: collapsible
+              default: collapsed
+              data:
+                source: project-exec-table-details
+                type: collection
+                lazy: true
+                keyed-by: execution-id
+              fields:
+                - name: table-name
+                  type: text
+                - name: row-count
+                  type: number
+                - name: status
+                  type: badge
+                  values: [success, failed]
+                - name: duration
+                  type: duration

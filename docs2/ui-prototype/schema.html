@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoomiDBX — Schema 浏览</title>
+  <style>
+    :root {
+      --bg: #ffffff; --surface: #f7f8fa; --fg: #1c2b33; --fg-2: #5d6c7b;
+      --muted: #65676b; --border: #ced0d4; --border-soft: #e8eaed;
+      --accent: #0064e0; --accent-on: #ffffff; --success: #31a24c; --warn: #f7b928; --danger: #e41e3f;
+      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+      --text-xs: 11px; --text-sm: 13px; --text-base: 14px; --text-lg: 16px; --text-xl: 20px;
+      --radius: 8px; --sidebar-w: 56px; --topbar-h: 48px;
+      --sb-bg: #1a1d21; --sb-fg: #b0b3b8; --sb-active: rgba(0,100,224,0.2);
+      --sb-active-fg: #47a5fa; --sb-divider: rgba(255,255,255,0.08); --sb-hover: rgba(255,255,255,0.08);
+    }
+    [data-theme="dark"] {
+      --bg: #0d0f12; --surface: #161a1f; --fg: #e4e6eb; --fg-2: #b0b3b8;
+      --muted: #8a8d91; --border: #2d3136; --border-soft: #22262b; --sb-bg: #0d0f12;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); font-size: var(--text-base); color: var(--fg); background: var(--bg); height: 100vh; overflow: hidden; }
+    button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    input, select, textarea { font: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+
+    .app { display: flex; height: 100vh; }
+    .sidebar {
+      width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--sb-bg); color: var(--sb-fg);
+      display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px;
+    }
+    .sb-logo {
+      width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: var(--accent-on);
+      display: grid; place-items: center; font-size: 14px; font-weight: 700; margin-bottom: 4px; flex-shrink: 0;
+      text-decoration: none;
+    }
+    .sb-btn {
+      width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+      color: var(--sb-fg); transition: background 0.15s, color 0.15s; position: relative; text-decoration: none;
+    }
+    .sb-btn:hover { background: var(--sb-hover); color: #e4e6eb; }
+    .sb-btn.active { background: var(--sb-active); color: var(--sb-active-fg); }
+    .sb-btn svg { width: 20px; height: 20px; }
+    .sb-btn .tooltip {
+      display: none; position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+      background: #1c1e21; color: #e4e6eb; padding: 4px 10px; border-radius: 6px;
+      font-size: 12px; white-space: nowrap; z-index: 50; pointer-events: none;
+    }
+    .sb-btn:hover .tooltip { display: block; }
+    .sb-spacer { flex: 1; }
+    .sb-avatar {
+      width: 32px; height: 32px; border-radius: 50%; background: #2d3136; color: var(--sb-fg);
+      display: grid; place-items: center; font-size: 12px; font-weight: 600;
+    }
+
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      height: var(--topbar-h); min-height: var(--topbar-h); border-bottom: 1px solid var(--border-soft);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: var(--bg);
+    }
+    .topbar-left { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
+    .topbar-left .bc { color: var(--muted); }
+    .topbar-left .bc-cur { color: var(--fg); font-weight: 600; }
+    .topbar-right { display: flex; align-items: center; gap: 6px; }
+    .topbar-right select, .topbar-right button {
+      padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-xs); background: var(--bg); color: var(--fg);
+    }
+    .content { flex: 1; overflow: hidden; position: relative; }
+
+    /* Schema layout */
+    .schema-screen { display: flex; width: 100%; height: 100%; }
+    .schema-left {
+      width: 260px; min-width: 260px; border-right: 1px solid var(--border-soft);
+      display: flex; flex-direction: column; background: var(--bg);
+    }
+    .schema-toolbar {
+      display: flex; align-items: center; gap: 4px; padding: 8px 10px;
+      border-bottom: 1px solid var(--border-soft); flex-wrap: wrap;
+    }
+    .schema-toolbar button, .schema-toolbar .tb-sep {
+      padding: 4px 6px; border-radius: 4px; font-size: var(--text-xs); color: var(--muted);
+      display: inline-flex; align-items: center; gap: 3px;
+    }
+    .schema-toolbar button:hover { background: var(--surface); color: var(--fg); }
+    .schema-toolbar .tb-sep { width: 1px; height: 16px; background: var(--border-soft); padding: 0; }
+    .schema-filter { padding: 6px 10px; border-bottom: 1px solid var(--border-soft); }
+    .schema-filter input {
+      width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-xs); background: var(--surface); color: var(--fg);
+    }
+    .schema-filter input:focus { outline: none; border-color: var(--accent); }
+    .tree-scroll { flex: 1; overflow-y: auto; padding: 6px 8px; }
+    .tree { font-size: var(--text-sm); }
+    .tree-item {
+      display: flex; align-items: center; gap: 5px; padding: 4px 6px;
+      border-radius: 5px; cursor: pointer; transition: background 0.1s; user-select: none;
+    }
+    .tree-item:hover { background: var(--surface); }
+    .tree-item.active { background: rgba(0,100,224,0.08); color: var(--accent); }
+    .tree-item .arrow {
+      width: 14px; height: 14px; display: grid; place-items: center;
+      color: var(--muted); flex-shrink: 0; transition: transform 0.15s;
+    }
+    .tree-item .arrow.open { transform: rotate(90deg); }
+    .tree-item .t-icon { width: 14px; height: 14px; color: var(--muted); flex-shrink: 0; }
+    .tree-item .t-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-item .t-badge {
+      font-size: 9px; padding: 1px 5px; border-radius: 3px;
+      background: rgba(49,162,76,0.12); color: var(--success); font-weight: 600;
+    }
+    .tree-item .t-badge.off { background: var(--surface); color: var(--muted); }
+    .tree-children { padding-left: 16px; }
+    .tree-children.collapsed { display: none; }
+
+    /* Context menu */
+    .ctx-menu {
+      position: fixed; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 4px; min-width: 160px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; display: none; font-size: var(--text-sm);
+    }
+    .ctx-menu.open { display: block; }
+    .ctx-menu button {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      padding: 6px 10px; border-radius: 4px; font-size: var(--text-sm); text-align: left;
+    }
+    .ctx-menu button:hover { background: var(--surface); }
+    .ctx-menu button svg { width: 14px; height: 14px; color: var(--muted); }
+    .ctx-menu .sep { height: 1px; background: var(--border-soft); margin: 3px 0; }
+
+    /* Schema right */
+    .schema-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .tab-bar {
+      display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border-soft);
+      background: var(--surface); min-height: 36px; overflow-x: auto; flex-shrink: 0;
+    }
+    .tab-bar::-webkit-scrollbar { height: 0; }
+    .tab-item {
+      display: flex; align-items: center; gap: 5px; padding: 7px 14px;
+      font-size: var(--text-sm); color: var(--muted); border-right: 1px solid var(--border-soft);
+      cursor: pointer; white-space: nowrap; transition: background 0.1s, color 0.1s; position: relative;
+    }
+    .tab-item:hover { background: var(--bg); color: var(--fg); }
+    .tab-item.active { background: var(--bg); color: var(--fg); font-weight: 600; }
+    .tab-item .tab-close {
+      width: 16px; height: 16px; border-radius: 3px; display: grid; place-items: center;
+      opacity: 0; transition: opacity 0.1s;
+    }
+    .tab-item:hover .tab-close, .tab-item.active .tab-close { opacity: 0.5; }
+    .tab-item .tab-close:hover { opacity: 1; background: var(--border-soft); }
+    .tab-item .tab-pin {
+      width: 14px; height: 14px; opacity: 0; transition: opacity 0.1s; color: var(--muted);
+    }
+    .tab-item:hover .tab-pin { opacity: 0.4; }
+    .tab-item .tab-pin.pinned { opacity: 1; color: var(--accent); }
+    .tab-item .tab-pin:hover { opacity: 1; }
+    .tab-body { flex: 1; overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; }
+
+    .empty-hint {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--muted); gap: 8px; font-size: var(--text-sm);
+    }
+    .empty-hint svg { width: 32px; height: 32px; opacity: 0.3; }
+
+    /* Table detail */
+    .tbl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .tbl-head h3 { font-size: var(--text-lg); font-weight: 700; }
+    .tbl-meta { font-size: var(--text-xs); color: var(--muted); }
+    .sub-tabs-wrap { display: flex; gap: 0; min-height: 0; flex: 1; }
+    .sub-tabs {
+      display: flex; flex-direction: column; gap: 0; border-right: 1px solid var(--border-soft);
+      padding-right: 0; min-width: 80px; flex-shrink: 0;
+    }
+    .sub-tab {
+      padding: 8px 16px; font-size: var(--text-sm); color: var(--muted);
+      border-right: 2px solid transparent; cursor: pointer; text-align: left; white-space: nowrap;
+    }
+    .sub-tab:hover { color: var(--fg); background: var(--surface); }
+    .sub-tab.active { color: var(--accent); border-right-color: var(--accent); background: var(--surface); }
+    .sub-content { flex: 1; overflow-y: auto; padding-left: 16px; }
+    table.dt { width: 100%; font-size: var(--text-sm); border-collapse: collapse; }
+    table.dt th, table.dt td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+    table.dt th {
+      font-size: var(--text-xs); color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface);
+    }
+    .type-b { display: inline-block; padding: 1px 6px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; background: var(--surface); color: var(--fg-2); }
+    .key-b { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-right: 3px; }
+    .key-b.pk { background: rgba(0,100,224,0.1); color: var(--accent); }
+    .key-b.fk { background: rgba(0,100,224,0.06); color: #5a8abf; }
+    .key-b.nn { background: rgba(228,30,63,0.08); color: var(--danger); }
+    .key-b.uq { background: rgba(49,162,76,0.08); color: var(--success); }
+    .mono { font-family: var(--font-mono); }
+    .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+    .badge-ok { background: rgba(49,162,76,0.12); color: var(--success); }
+    .badge-err { background: rgba(228,30,63,0.12); color: var(--danger); }
+    .badge-run { background: rgba(0,100,224,0.1); color: var(--accent); }
+    .badge-draft { background: var(--surface); color: var(--muted); }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: var(--text-sm); font-weight: 500; transition: background 0.15s; }
+    .btn-primary { background: var(--accent); color: var(--accent-on); }
+    .btn-primary:hover { background: #0143b5; }
+    .btn-ghost { color: var(--fg); }
+    .btn-ghost:hover { background: var(--surface); }
+    .btn-sm { padding: 4px 10px; font-size: var(--text-xs); }
+
+    /* Dialog */
+    .dlg-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: none; place-items: center; z-index: 100;
+    }
+    .dlg-overlay.open { display: grid; }
+    .dlg {
+      background: var(--bg); border-radius: 12px; padding: 24px;
+      width: 440px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    }
+    .dlg h3 { font-size: var(--text-lg); font-weight: 700; margin-bottom: 18px; }
+    .dlg .field { margin-bottom: 12px; }
+    .dlg .field label { display: block; font-size: var(--text-xs); font-weight: 600; color: var(--fg-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dlg .field input, .dlg .field select, .dlg .field textarea {
+      width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: var(--text-sm); background: var(--bg); color: var(--fg);
+    }
+    .dlg .field input:focus, .dlg .field select:focus { outline: none; border-color: var(--accent); }
+    .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .pin-hint {
+      position: fixed; background: #1c1e21; color: #e4e6eb; padding: 5px 10px;
+      border-radius: 6px; font-size: 11px; z-index: 200; pointer-events: none;
+      white-space: nowrap; opacity: 0; transition: opacity 0.2s;
+    }
+    .pin-hint.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <a class="sb-logo" href="index.html" title="返回导航">L</a>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+        <a class="sb-btn active" href="schema.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path></svg>
+          <span class="tooltip">Schema 浏览</span>
+        </a>
+        <a class="sb-btn" href="projects.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span class="tooltip">项目管理</span>
+        </a>
+      </div>
+      <div class="sb-spacer"></div>
+      <a class="sb-btn" href="login.html">
+        <div class="sb-avatar">CG</div>
+        <span class="tooltip">cg · 退出登录</span>
+      </a>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="bc">LoomiDBX</span>
+          <span style="color:var(--border)">/</span>
+          <span class="bc-cur">Schema 浏览</span>
+        </div>
+        <div class="topbar-right">
+          <select id="lang-select" title="语言">
+            <option value="zh">中文</option>
+            <option value="en">EN</option>
+          </select>
+          <button onclick="toggleTheme()" title="切换主题" style="display:inline-flex;align-items:center;gap:3px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <a class="sb-btn" href="settings.html" title="系统设置" style="width:auto;height:auto;padding:4px 8px;border:1px solid var(--border);border-radius:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </a>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="schema-screen">
+          <!-- Left panel -->
+          <div class="schema-left">
+            <div class="schema-toolbar">
+              <button onclick="openDlg('conn-dlg')" title="新建连接">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+              <div class="tb-sep"></div>
+              <button onclick="refreshTree()" title="刷新">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+              <button onclick="expandAll()" title="全部展开">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+              </button>
+              <button onclick="collapseAll()" title="全部折叠">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+              </button>
+              <div class="tb-sep"></div>
+              <button onclick="toggleConnectedOnly()" id="btn-connected-only" title="仅显示已连接">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+            <div class="schema-filter">
+              <input type="text" placeholder="过滤..." id="tree-filter" oninput="filterTree(this.value)">
+            </div>
+            <div class="tree-scroll">
+              <div class="tree" id="schema-tree"></div>
+            </div>
+          </div>
+
+          <!-- Right panel -->
+          <div class="schema-right">
+            <div class="tab-bar" id="schema-tab-bar"></div>
+            <div class="tab-body" id="schema-tab-body">
+              <div class="empty-hint" id="schema-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                <span>在左侧选择一张表以浏览其结构</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div class="ctx-menu" id="ctx-menu"></div>
+
+  <!-- Pin Hint -->
+  <div class="pin-hint" id="pin-hint">钉住此标签页，切换表时不会被覆盖</div>
+
+  <!-- New Connection Dialog -->
+  <div class="dlg-overlay" id="conn-dlg" onclick="if(event.target===this)closeDlg('conn-dlg')">
+    <div class="dlg">
+      <h3>新建连接</h3>
+      <div class="form-row">
+        <div class="field"><label>连接名称</label><input type="text" placeholder="例如: 测试-MySQL"></div>
+        <div class="field"><label>数据库类型</label><select><option>MySQL</option><option>PostgreSQL</option><option>Oracle</option><option>SQL Server</option><option>SQLite</option><option>ClickHouse</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>主机地址</label><input type="text" placeholder="10.0.1.100"></div>
+        <div class="field"><label>端口</label><input type="text" placeholder="3306"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>用户名</label><input type="text" placeholder="root"></div>
+        <div class="field"><label>密码</label><input type="password" placeholder="••••••••"></div>
+      </div>
+      <div class="field"><label>数据库名</label><input type="text" placeholder="可选，连接后选择"></div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('conn-dlg')">取消</button>
+        <button class="btn btn-ghost">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          测试连接
+        </button>
+        <button class="btn btn-primary" onclick="closeDlg('conn-dlg')">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Field Rule Dialog -->
+  <div class="dlg-overlay" id="rule-dlg" onclick="if(event.target===this)closeDlg('rule-dlg')">
+    <div class="dlg">
+      <h3>配置字段规则</h3>
+      <div class="field"><label>生成方式</label>
+        <select><option>自增 (AUTO_INCREMENT)</option><option>随机值</option><option>序列</option><option>枚举值</option><option>外键关联</option><option>计算值</option></select>
+      </div>
+      <div class="field"><label>参数</label><input type="text" placeholder="根据生成方式填写"></div>
+      <div style="margin-top:12px;padding:12px;background:var(--surface);border-radius:8px;">
+        <div style="font-size:var(--text-xs);font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">预览</div>
+        <div class="mono" style="font-size:var(--text-sm);display:flex;gap:8px;flex-wrap:wrap;">
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">1</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">2</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">3</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">4</span>
+          <span style="padding:2px 7px;background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;">5</span>
+        </div>
+      </div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" onclick="closeDlg('rule-dlg')">取消</button>
+        <button class="btn btn-primary" onclick="closeDlg('rule-dlg')">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ─── Data ──────────────────────────────────────────── */
+    const connections = [
+      { id: 'c1', name: '生产-MySQL', type: 'MySQL', addr: '10.0.1.100:3306', status: 'connected', color: '#0064e0' },
+      { id: 'c2', name: '测试-PostgreSQL', type: 'Pg', addr: '10.0.2.50:5432', status: 'connected', color: '#31a24c' },
+      { id: 'c3', name: '预发-Oracle', type: 'Or', addr: '10.0.3.20:1521', status: 'disconnected', color: '#e41e3f' },
+      { id: 'c4', name: '报表-MSSQL', type: 'MS', addr: '10.0.4.80:1433', status: 'connected', color: '#f7b928' },
+    ];
+
+    const treeData = {
+      c1: { databases: { ecommerce_db: { schemas: { public: ['users', 'orders', 'products', 'order_items', 'categories', 'reviews'] } } } },
+      c2: { databases: { test_db: { schemas: { public: ['test_users', 'test_orders'] } } } },
+      c3: { databases: { preprod_db: { schemas: { app: ['app_users', 'app_sessions'] } } } },
+      c4: { databases: { report_db: { schemas: { dbo: ['daily_sales', 'monthly_summary'] } } } },
+    };
+
+    const tableMeta = {
+      users: { fields: 6, constraints: 3, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '用户主键', gen: '未配置' },
+          { name: 'username', type: 'VARCHAR(50)', keys: ['uq','nn'], def: '—', comment: '用户名', gen: '随机用户名' },
+          { name: 'email', type: 'VARCHAR(100)', keys: ['uq','nn'], def: '—', comment: '邮箱地址', gen: '随机邮箱' },
+          { name: 'phone', type: 'VARCHAR(20)', keys: [], def: 'NULL', comment: '手机号', gen: '随机手机号' },
+          { name: 'status', type: 'TINYINT', keys: ['nn'], def: '1', comment: '状态: 0=禁用 1=正常', gen: '枚举 [0,1]' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ] },
+      orders: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '订单主键', gen: '未配置' },
+          { name: 'user_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '下单用户', gen: '外键 → users.id' },
+          { name: 'total', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '订单金额', gen: '随机金额' },
+          { name: 'status', type: 'VARCHAR(20)', keys: ['nn'], def: 'pending', comment: '订单状态', gen: '枚举' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ] },
+      products: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '商品主键', gen: '未配置' },
+          { name: 'name', type: 'VARCHAR(200)', keys: ['nn'], def: '—', comment: '商品名称', gen: '随机商品名' },
+          { name: 'price', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '价格', gen: '随机金额' },
+          { name: 'category_id', type: 'BIGINT', keys: ['fk'], def: 'NULL', comment: '分类', gen: '外键 → categories.id' },
+          { name: 'created_at', type: 'DATETIME', keys: ['nn'], def: 'CURRENT_TIMESTAMP', comment: '创建时间', gen: '使用默认值' },
+        ] },
+      order_items: { fields: 5, constraints: 3, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '主键', gen: '未配置' },
+          { name: 'order_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '所属订单', gen: '外键 → orders.id' },
+          { name: 'product_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '商品', gen: '外键 → products.id' },
+          { name: 'quantity', type: 'INT', keys: ['nn'], def: '1', comment: '数量', gen: '随机 1-10' },
+          { name: 'unit_price', type: 'DECIMAL(10,2)', keys: ['nn'], def: '0.00', comment: '单价', gen: '复制 product.price' },
+        ] },
+      categories: { fields: 3, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '分类主键', gen: '未配置' },
+          { name: 'name', type: 'VARCHAR(100)', keys: ['uq','nn'], def: '—', comment: '分类名', gen: '枚举' },
+          { name: 'sort_order', type: 'INT', keys: [], def: '0', comment: '排序', gen: '序列' },
+        ] },
+      reviews: { fields: 5, constraints: 2, db: 'ecommerce_db', schema: 'public', conn: 'c1',
+        cols: [
+          { name: 'id', type: 'BIGINT', keys: ['pk','nn'], def: 'AUTO_INCREMENT', comment: '评论主键', gen: '未配置' },
+          { name: 'user_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '评论用户', gen: '外键 → users.id' },
+          { name: 'product_id', type: 'BIGINT', keys: ['fk','nn'], def: '—', comment: '商品', gen: '外键 → products.id' },
+          { name: 'rating', type: 'TINYINT', keys: ['nn'], def: '5', comment: '评分 1-5', gen: '随机 1-5' },
+          { name: 'content', type: 'TEXT', keys: [], def: 'NULL', comment: '评论内容', gen: '随机文本' },
+        ] },
+    };
+
+    /* ─── State ─────────────────────────────────────────── */
+    let connectedOnly = false;
+    let openTabs = [];
+    let activeTabId = null;
+
+    /* ─── Theme ─────────────────────────────────────────── */
+    function toggleTheme() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      setTheme(isDark ? 'light' : 'dark');
+    }
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+    }
+
+    /* ─── Tree rendering ────────────────────────────────── */
+    function renderTree() {
+      const tree = document.getElementById('schema-tree');
+      const filter = document.getElementById('tree-filter').value.toLowerCase();
+      let html = '';
+
+      connections.forEach(conn => {
+        if (connectedOnly && conn.status !== 'connected') return;
+        if (filter && !conn.name.toLowerCase().includes(filter)) {
+          let hasMatch = false;
+          const dbData = treeData[conn.id];
+          if (dbData) {
+            for (const db of Object.keys(dbData.databases)) {
+              for (const schema of Object.keys(dbData.databases[db].schemas)) {
+                if (dbData.databases[db].schemas[schema].some(t => t.includes(filter))) hasMatch = true;
+              }
+            }
+          }
+          if (!hasMatch) return;
+        }
+
+        const connOpen = conn.status === 'connected';
+        const statusBadge = conn.status === 'connected'
+          ? '<span class="t-badge">ON</span>'
+          : '<span class="t-badge off">OFF</span>';
+
+        html += `<div class="tree-item" data-conn="${conn.id}" data-type="conn" oncontextmenu="showCtx(event,'conn','${conn.id}')" onclick="toggleTreeNode(this)">
+          <span class="arrow${connOpen ? ' open' : ''}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+          <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span class="t-label">${conn.name}</span>
+          ${statusBadge}
+        </div>`;
+
+        if (!connOpen) {
+          html += `<div class="tree-children collapsed" data-conn="${conn.id}"></div>`;
+          return;
+        }
+
+        const dbData = treeData[conn.id];
+        if (!dbData) return;
+
+        html += `<div class="tree-children${connOpen ? '' : ' collapsed'}" data-conn="${conn.id}">`;
+        for (const db of Object.keys(dbData.databases)) {
+          const dbHasMatch = !filter || db.includes(filter) || Object.keys(dbData.databases[db].schemas).some(s => {
+            return dbData.databases[db].schemas[s].some(t => t.includes(filter));
+          });
+          if (!dbHasMatch) continue;
+
+          html += `<div class="tree-item" data-type="db" onclick="toggleTreeNode(this)">
+            <span class="arrow open"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+            <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+            <span class="t-label">${db}</span>
+          </div>`;
+
+          html += `<div class="tree-children">`;
+          for (const schema of Object.keys(dbData.databases[db].schemas)) {
+            const tables = dbData.databases[db].schemas[schema];
+            const schemaHasMatch = !filter || schema.includes(filter) || tables.some(t => t.includes(filter));
+            if (!schemaHasMatch) continue;
+
+            html += `<div class="tree-item" data-type="schema" onclick="toggleTreeNode(this)">
+              <span class="arrow open"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+              <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/></svg>
+              <span class="t-label">${schema}</span>
+            </div>`;
+
+            html += `<div class="tree-children">`;
+            tables.forEach(t => {
+              if (filter && !t.includes(filter)) return;
+              html += `<div class="tree-item" data-type="table" data-table="${t}" data-conn-id="${conn.id}" data-db="${db}" data-schema="${schema}"
+                onclick="selectTable('${t}','${conn.id}','${db}','${schema}')"
+                oncontextmenu="showCtx(event,'table','${t}','${conn.id}')">
+                <span class="arrow" style="visibility:hidden"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+                <svg class="t-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                <span class="t-label">${t}</span>
+              </div>`;
+            });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
+
+      tree.innerHTML = html;
+    }
+
+    function toggleTreeNode(el) {
+      const arrow = el.querySelector('.arrow');
+      const children = el.nextElementSibling;
+      if (children && children.classList.contains('tree-children')) {
+        arrow.classList.toggle('open');
+        children.classList.toggle('collapsed');
+      }
+    }
+    function expandAll() {
+      document.querySelectorAll('#schema-tree .tree-children').forEach(c => c.classList.remove('collapsed'));
+      document.querySelectorAll('#schema-tree .arrow').forEach(a => a.classList.add('open'));
+    }
+    function collapseAll() {
+      document.querySelectorAll('#schema-tree .tree-children').forEach(c => c.classList.add('collapsed'));
+      document.querySelectorAll('#schema-tree .arrow').forEach(a => a.classList.remove('open'));
+    }
+    function refreshTree() { renderTree(); }
+    function filterTree(v) { renderTree(); }
+    function toggleConnectedOnly() {
+      connectedOnly = !connectedOnly;
+      document.getElementById('btn-connected-only').style.color = connectedOnly ? 'var(--accent)' : '';
+      renderTree();
+    }
+
+    /* ─── Context menu ──────────────────────────────────── */
+    function showCtx(e, type, id, connId) {
+      e.preventDefault(); e.stopPropagation();
+      const menu = document.getElementById('ctx-menu');
+      let html = '';
+      if (type === 'conn') {
+        const conn = connections.find(c => c.id === id);
+        const isConnected = conn.status === 'connected';
+        html = `
+          <button onclick="closeCtx();toggleConn('${id}')">${isConnected ? '断开连接' : '连接'}</button>
+          <button onclick="closeCtx();refreshConn('${id}')">刷新 (重新扫描)</button>
+          <div class="sep"></div>
+          <button onclick="closeCtx();editConn('${id}')">编辑</button>
+          <button onclick="closeCtx();deleteConn('${id}')" style="color:var(--danger)">删除</button>`;
+      } else if (type === 'table') {
+        html = `
+          <button onclick="closeCtx();selectTable('${id}','${connId}','','')">在当前标签页打开</button>
+          <button onclick="closeCtx();openInNewTab('${id}','${connId}')">在新标签页打开</button>`;
+      }
+      menu.innerHTML = html;
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      menu.classList.add('open');
+    }
+    function closeCtx() { document.getElementById('ctx-menu').classList.remove('open'); }
+    document.addEventListener('click', closeCtx);
+    function toggleConn(id) { const conn = connections.find(c => c.id === id); conn.status = conn.status === 'connected' ? 'disconnected' : 'connected'; renderTree(); }
+    function refreshConn(id) { renderTree(); }
+    function editConn(id) { openDlg('conn-dlg'); }
+    function deleteConn(id) { const idx = connections.findIndex(c => c.id === id); if (idx > -1) connections.splice(idx, 1); renderTree(); }
+
+    /* ─── Tab management ────────────────────────────────── */
+    function selectTable(table, connId, db, schema) {
+      document.querySelectorAll('#schema-tree .tree-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll(`#schema-tree .tree-item[data-table="${table}"]`).forEach(i => i.classList.add('active'));
+      const existing = openTabs.find(t => t.table === table);
+      if (existing) { activateTab(existing.id); return; }
+      const unpinnedActive = openTabs.find(t => !t.pinned && t.id === activeTabId);
+      if (unpinnedActive) { unpinnedActive.table = table; unpinnedActive.connId = connId; renderTabs(); activateTab(unpinnedActive.id); return; }
+      openInNewTab(table, connId);
+    }
+    function openInNewTab(table, connId) {
+      const tabId = 'tab-' + Date.now();
+      openTabs.push({ id: tabId, table, connId, pinned: false });
+      renderTabs(); activateTab(tabId);
+    }
+    function activateTab(tabId) {
+      activeTabId = tabId;
+      const tab = openTabs.find(t => t.id === tabId);
+      document.querySelectorAll('#schema-tab-bar .tab-item').forEach(t => t.classList.toggle('active', t.dataset.tabId === tabId));
+      if (tab) renderTableDetail(tab.table);
+    }
+    function closeTab(tabId, e) {
+      if (e) e.stopPropagation();
+      const idx = openTabs.findIndex(t => t.id === tabId);
+      if (idx === -1) return;
+      openTabs.splice(idx, 1);
+      if (activeTabId === tabId) activeTabId = openTabs.length > 0 ? openTabs[Math.max(0, idx - 1)].id : null;
+      renderTabs();
+      if (activeTabId) { const tab = openTabs.find(t => t.id === activeTabId); if (tab) renderTableDetail(tab.table); }
+      else {
+        document.getElementById('schema-tab-body').innerHTML = `<div class="empty-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg><span>在左侧选择一张表以浏览其结构</span></div>`;
+      }
+    }
+    function togglePin(tabId, e) {
+      if (e) e.stopPropagation();
+      const tab = openTabs.find(t => t.id === tabId);
+      if (!tab) return;
+      tab.pinned = !tab.pinned; renderTabs();
+      if (tab.pinned) {
+        const hint = document.getElementById('pin-hint');
+        const rect = e.target.getBoundingClientRect();
+        hint.style.left = rect.left + 'px'; hint.style.top = (rect.bottom + 6) + 'px';
+        hint.classList.add('show');
+        setTimeout(() => hint.classList.remove('show'), 2000);
+      }
+    }
+    function renderTabs() {
+      const bar = document.getElementById('schema-tab-bar');
+      bar.innerHTML = openTabs.map(t => {
+        const pinClass = t.pinned ? ' pinned' : '';
+        return `<div class="tab-item${t.id === activeTabId ? ' active' : ''}" data-tab-id="${t.id}" onclick="activateTab('${t.id}')">
+          <svg class="tab-pin${pinClass}" viewBox="0 0 24 24" fill="${t.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" onclick="togglePin('${t.id}',event)" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 2-2H6a2 2 0 0 0 2 2 1 1 0 0 1 1 1z"/></svg>
+          <span>${t.table}</span>
+          <span class="tab-close" onclick="closeTab('${t.id}',event)">×</span>
+        </div>`;
+      }).join('');
+    }
+
+    /* ─── Table detail rendering ────────────────────────── */
+    function renderTableDetail(table) {
+      const meta = tableMeta[table];
+      if (!meta) { document.getElementById('schema-tab-body').innerHTML = `<div class="empty-hint"><span>${table} — 暂无元数据</span></div>`; return; }
+      const keyBadge = (k) => { const m = { pk: 'PK', fk: 'FK', nn: 'NN', uq: 'UQ' }; return `<span class="key-b ${k}">${m[k]}</span>`; };
+
+      document.getElementById('schema-tab-body').innerHTML = `
+        <div class="tbl-head">
+          <div><h3>${table}</h3><div class="tbl-meta">${meta.db} · ${meta.schema} · ${meta.fields} 个字段 · ${meta.constraints} 个约束</div></div>
+          <button class="btn btn-ghost btn-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            重新扫描
+          </button>
+        </div>
+        <div class="sub-tabs-wrap">
+        <div class="sub-tabs">
+          <button class="sub-tab active" onclick="switchSubTab(this,'sub-fields')">字段</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-constraints')">约束</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-fk')">外键</button>
+          <button class="sub-tab" onclick="switchSubTab(this,'sub-ddl')">DDL</button>
+        </div>
+        <div class="sub-content">
+        <div id="sub-fields">
+          <table class="dt">
+            <thead><tr><th>#</th><th>字段名</th><th>类型</th><th>约束</th><th>默认值</th><th>注释</th><th>生成器</th></tr></thead>
+            <tbody>
+              ${meta.cols.map((c, i) => {
+                const isAutoPk = c.keys.includes('pk') && c.def === 'AUTO_INCREMENT';
+                const isUnconfigured = c.gen === '未配置';
+                let genCell = '';
+                if (isAutoPk) { genCell = ''; }
+                else if (isUnconfigured) { genCell = `<td style="cursor:pointer" onclick="openDlg('rule-dlg')"><span class="badge badge-draft">&lt;不使用&gt;</span></td>`; }
+                else { genCell = `<td style="cursor:pointer" onclick="openDlg('rule-dlg')"><span class="badge badge-run">${c.gen}</span></td>`; }
+                return `<tr>
+                  <td class="mono" style="color:var(--muted)">${i+1}</td>
+                  <td class="mono" style="font-weight:600">${c.name}</td>
+                  <td><span class="type-b">${c.type}</span></td>
+                  <td>${c.keys.map(keyBadge).join('')}</td>
+                  <td class="mono" style="font-size:var(--text-xs)">${c.def}</td>
+                  <td style="font-size:var(--text-xs);color:var(--muted)">${c.comment}</td>
+                  ${genCell}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-constraints" style="display:none">
+          <table class="dt">
+            <thead><tr><th>约束名</th><th>字段</th><th>类型</th></tr></thead>
+            <tbody>
+              ${meta.cols.filter(c => c.keys.length > 0).map(c => c.keys.map(k => {
+                const m = { pk: 'Primary Key', fk: 'Foreign Key', nn: 'Not Null', uq: 'Unique' };
+                return `<tr><td class="mono">${c.name}_${k}</td><td class="mono">${c.name}</td><td><span class="key-b ${k}">${m[k]}</span></td></tr>`;
+              }).join('')).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-fk" style="display:none">
+          <table class="dt">
+            <thead><tr><th>外键名</th><th>字段</th><th>引用表</th><th>引用字段</th></tr></thead>
+            <tbody>
+              ${meta.cols.filter(c => c.keys.includes('fk')).map(c => {
+                const refMatch = c.gen.match(/外键\s*→\s*(\w+)\.(\w+)/);
+                const refTable = refMatch ? refMatch[1] : '—';
+                const refField = refMatch ? refMatch[2] : '—';
+                return `<tr><td class="mono">fk_${c.name}</td><td class="mono">${c.name}</td><td class="mono">${refTable}</td><td class="mono">${refField}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div id="sub-ddl" style="display:none">
+          <pre style="background:#1a1d21;color:#e4e6eb;padding:16px;border-radius:8px;font-family:var(--font-mono);font-size:12px;line-height:1.6;overflow-x:auto;">CREATE TABLE ${meta.schema}.${table} (
+${meta.cols.map(c => `  ${c.name.padEnd(14)} ${c.type.padEnd(16)} ${c.keys.includes('nn') ? 'NOT NULL' : ''}${c.def !== '—' && c.def !== 'NULL' ? ' DEFAULT ' + c.def : ''}`).join(',\n')}
+);</pre>
+        </div>
+        </div>
+        </div>`;
+    }
+    function switchSubTab(btn, contentId) {
+      btn.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const content = btn.closest('.sub-tabs-wrap').querySelector('.sub-content');
+      content.querySelectorAll('[id^="sub-"]').forEach(c => c.style.display = 'none');
+      document.getElementById(contentId).style.display = '';
+    }
+
+    /* ─── Dialogs ───────────────────────────────────────── */
+    function openDlg(id) { document.getElementById(id).classList.add('open'); }
+    function closeDlg(id) { document.getElementById(id).classList.remove('open'); }
+
+    /* ─── Init ──────────────────────────────────────────── */
+    renderTree();
+    openInNewTab('users', 'c1');
+  </script>
+</body>
+</html>
