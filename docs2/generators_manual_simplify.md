@@ -7,20 +7,19 @@
 | 生成器类型 | 名称 | 输出数据类型 | 作用 |
 |-----------|------|-------------|------|
 | `distribute_int` | 整数分布生成器 | integer | 基于概率分布（正态、指数、幂律等）生成随机整数 |
-| `sql_expression` | SQL 表达式生成器 | 任意 | 通过 SQL 表达式生成数据 |
-| `python_expression` | Python 表达式生成器 | 任意 | 通过 Python 表达式生成数据 |
-
+| `dict_table` | 字典表生成器 | 任意 | 从另一个表中拉取指定列的数据作为生成值 |
+| `external_data_source` | 外部数据源生成器 | 任意 | 从外部数据源（JSON/CSV 文件、外部API）拉取维度数据 |
 ---
 
 ## 二、数据类型与生成器类型关系
 
 | 列数据类型 | 可用的生成器类型 |
 |-----------|----------------|
-| integer | distribute_int, sql_expression, python_expression |
-| text | sql_expression, python_expression |
-| float | sql_expression, python_expression |
-| boolean | sql_expression, python_expression |
-| datetime | sql_expression, python_expression |
+| integer | distribute_int, dict_table, external_data_source |
+| text | dict_table, external_data_source |
+| float | dict_table, external_data_source |
+| boolean | dict_table, external_data_source |
+| datetime | dict_table, external_data_source |
 
 ---
 
@@ -36,7 +35,8 @@
 > - **seed**：随机种子。
 >
 > **不适用基础配置的生成器**：
-> - **foreign_key** — 输出由引用列的值决定
+> - **dict_table** — 输出由字典表的列决定
+> - **external_data_source** — 输出由外部数据源决定；不支持 type_format、stringify 及 seed，但支持 null_percentage 和 unique
 
 ```json
 {
@@ -57,40 +57,18 @@
 
 ---
 
-### 3.1 `distribute_int` — 整数分布生成器
+### 3.27 `dict_table` — 字典表生成器
 
-**输出类型**：integer
+**输出类型**：任意（根据 SQL 查询结果）
 
-基于概率分布生成整数序列，支持正态分布、指数分布、幂律分布等。
+从另一个表中拉取指定列的数据作为生成值。这允许用户利用现有数据库中的字典表、配置表或任何单列数据作为数据源，实现数据标准化和复用。SQL 查询必须是 `SELECT` 单列的检索语句。
 
 #### 完整配置结构
 
 ```json
 {
-  "distribution": {
-    "normal": {
-      "mean": 50,
-      "std_dev": 15
-    }
-  },
-  "clamp_min": null,
-  "clamp_max": null,
-  "seed": null,
-  "type_format": {
-    "radix": "decimal", 
-    "upper_case": false, 
-    "thousands_sep": true
-  }, 
-  "stringify": {
-    "template": "ID-${value}", 
-    "padding": {
-      "length": 5, 
-      "char": "0", 
-      "direction": "left"
-    }
-  }, 
-  "null_percentage": 0.1, 
-  "unique": false
+  "sql_query": "SELECT name FROM categories WHERE is_active = TRUE",
+  "null_percentage": 0.05
 }
 ```
 
@@ -98,57 +76,46 @@
 
 | 配置项 | 类型 | 必填 | 说明 | 默认值 |
 |--------|------|------|------|--------|
-| distribution | object | 是 | 分布配置，必须包含且仅包含以下分布类型之一 | -- |
-| clamp_min | integer | 否 | 输出截断最小值，生成值小于此值时强制替换为 clamp_min | null（不截断） |
-| clamp_max | integer | 否 | 输出截断最大值，生成值大于此值时强制替换为 clamp_max | null（不截断） |
-| type_format | object | 否 | 整数格式化配置 | -- |
-| type_format.radix | string | 否 | 数字进制：`decimal`（十进制）、`hex`（十六进制）、`octal`（八进制）、`binary`（二进制） | "decimal" |
-| type_format.upper_case | boolean | 否 | 是否使用大写（用于十六进制） | false |
-| type_format.thousands_sep | boolean | 否 | 是否使用千分位分隔符（仅在十进制模式下有效） | false |
-| stringify | object | 否 | 字符串模板配置，参见§ stringify 配置 | -- |
+| sql_query | string | 是 | 用于从字典表中检索数据的 SQL 查询语句。该语句必须是一个 `SELECT` 单列的检索语句。 | -- |
 | null_percentage | number | 否 | 生成空值的概率，范围 [0,1] | 0 |
-| unique | boolean | 否 | 生成值是否唯一 | false |
-| seed | integer | 否 | 随机种子，参见§ 基础配置项说明 | null |
 
-#### 分布类型参数速查
+---
 
-`distribution` 对象中的 key 即为分布类型名称，必须包含且仅包含以下类型之一：
+### 3.28 `external_data_source` — 外部数据源生成器
 
-| 分布类型（key） | 参数名 | 类型 | 必填 | 说明 | 默认值 |
-|---|---|---|---|---|---|
-| `normal`（正态分布） | mean | number | 否 | 均值 | 0 |
-| | std_dev | number | 否 | 标准差（必须 > 0） | 1 |
-| `log_normal`（对数正态分布） | mean | number | 否 | 对数均值 | 0 |
-| | std_dev | number | 否 | 对数标准差（必须 > 0） | 1 |
-| `exponential`（指数分布） | lambda | number | 是 | 率参数 λ（必须 > 0） | -- |
-| `power_law`（幂律分布） | alpha | number | 是 | 幂律指数（必须 > 1） | -- |
-| | x_min | number | 是 | 最小值（必须 > 0） | -- |
-| `poisson`（泊松分布） | lambda | number | 是 | 期望 λ（必须 > 0） | -- |
-| `binomial`（二项分布） | n | integer | 是 | 试验次数（必须 > 0） | -- |
-| | p | number | 是 | 成功概率，范围 [0,1] | -- |
+**输出类型**：任意（根据外部数据源内容）
 
-**示例：指数分布**
-```json
-{
-  "distribution": {
-    "exponential": { "lambda": 0.5 }
-  },
-  "clamp_min": 0,
-  "clamp_max": 9999
-}
-```
-
-### 3.24 `sql_expression` — SQL 表达式生成器
-
-**输出类型**：任意（根据表达式结果）
-
-允许用户通过 SQL 表达式生成数据，表达式中可引用其他列的值。这对于生成复杂的、依赖于其他字段的计算值非常有用，例如订单编号、组合地址等。
+从外部数据源（包括内嵌 JSON/CSV 文件、用户上传的 JSON/CSV 文件、HTTP(S) API/资源）拉取维度数据。适用于需要从外部系统或文件获取主数据、标准词表或可选项列表的场景，例如从 CRM 拉取销售员信息、从公开数据集获取城市名等。
 
 #### 完整配置结构
 
 ```json
 {
-  "expression": "CONCAT('ORD-', DATE_FORMAT(${order_time}, '%Y%m%d'), LPAD(${seq}, 4, '0'))",
+  "source_type": "http_api_resource",
+  "source_config": {
+    "file_path": "x.json",
+    "file_id": "file_id_01.json",
+    "file_field": "product_name",
+    "url": "https://api.example.com/products",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer YOUR_TOKEN"
+    },
+    "body": "{}",
+    "response_path": "$.data[*].product_name",
+    "auth": {
+      "type": "bearer_token",
+      "api_key_name": "key",
+      "api_key_value": "value",
+      "api_key_in": "header",
+      "token": "YOUR_STATIC_TOKEN",
+      "token_url": "https://api.example.com/sign",
+      "token_post_body": "{}",
+      "username": "john",
+      "password": "YOUR_PASSWORD",
+      "hmac_secret": "SECRET_KEY"
+    }
+  },
   "null_percentage": 0.05,
   "unique": false
 }
@@ -158,42 +125,31 @@
 
 | 配置项 | 类型 | 必填 | 说明 | 默认值 |
 |--------|------|------|------|--------|
-| expression | string | 是 | SQL 表达式字符串。表达式中可以使用 `${column_name}` 引用当前表中的其他列。 | -- |
+| source_type | string | 是 | 外部数据源类型：`embedded`（内嵌 JSON/CSV 文件）、`user_uploaded`（用户上传 JSON/CSV 文件）、`http_api_resource`（HTTP(S) API/资源） | -- |
+| source_config | object | 是 | 外部数据源的具体配置，根据 `source_type` 不同而异。 | -- |
+| source_config.file_path | string | 否 | 当 `source_type` 为 `embedded` 时必填。内嵌 JSON/CSV 文件的路径。 | -- |
+| source_config.file_id | string | 否 | 当 `source_type` 为 `user_uploaded` 时必填。用户上传 JSON/CSV 文件的唯一标识符。 | -- |
+| source_config.file_field | string | 否 | 当 `source_type` 为 `embedded` 或 `user_uploaded` 时可用。指定从文件中提取的字段名称：JSON 文件时为字段 key，CSV 文件时为列标题名称。不填时使用文件中的第一个字段/列。 | null（第一个字段）|
+| source_config.url | string | 否 | 当 `source_type` 为 `http_api_resource` 时必填。HTTP(S) API 或资源的 URL。 | -- |
+| source_config.method | string | 否 | 当 `source_type` 为 `http_api_resource` 时可用。HTTP 请求方法，如 `GET`、`POST`。 | "GET" |
+| source_config.headers | object | 否 | 当 `source_type` 为 `http_api_resource` 时可用。HTTP 请求头，键值对形式。 | -- |
+| source_config.body | string | 否 | 当 `source_type` 为 `http_api_resource` 且 `method` 为 `POST` 或 `PUT` 时可用。HTTP 请求体。 | -- |
+| source_config.response_path | string | 否 | 当 `source_type` 为 `http_api_resource` 时可用。用于从 API 响应中提取数据的 JSONPath 表达式。 | "$" |
+| source_config.auth | object | 否 | 当 `source_type` 为 `http_api_resource` 时可用。HTTP 认证配置。 | -- |
+| source_config.auth.type | string | 否 | 认证类型：`none`、`api_key`、`bearer_token`、`basic_auth`、`hmac_signature`、`digest_auth`。 | "none" |
+| source_config.auth.api_key_name | string | 否 | 当 `auth.type` 为 `api_key` 时必填。API Key 的名称。 | -- |
+| source_config.auth.api_key_value | string | 否 | 当 `auth.type` 为 `api_key` 时必填。API Key 的值。 | -- |
+| source_config.auth.api_key_in | string | 否 | 当 `auth.type` 为 `api_key` 时必填。API Key 放置位置：`header` 或 `query`。 | "header" |
+| source_config.auth.token | string | 否 | 当 `auth.type` 为 `bearer_token` 时必填。Bearer Token 的值。 | -- |
+| source_config.auth.token_url | string | 否 | 当 `auth.type` 为 `bearer_token` 且需要动态获取 token 时必填。用于获取 token 的 URL。 | -- |
+| source_config.auth.token_post_body | string | 否 | 当 `auth.type` 为 `bearer_token` 且需要动态获取 token 时必填。获取 token 的 POST 请求体。 | -- |
+| source_config.auth.username | string | 否 | 当 `auth.type` 为 `basic_auth` 或 `digest_auth` 时必填。认证用户名。 | -- |
+| source_config.auth.password | string | 否 | 当 `auth.type` 为 `basic_auth` 或 `digest_auth` 时必填。认证密码。 | -- |
+| source_config.auth.hmac_secret | string | 否 | 当 `auth.type` 为 `hmac_signature` 时必填。HMAC 签名密钥。 | -- |
 | null_percentage | number | 否 | 生成空值的概率，范围 [0,1] | 0 |
 | unique | boolean | 否 | 生成值是否唯一 | false |
 
-> **引用限制**：`${column_name}` 只能引用同表中的**非表达式列**（即未配置 `sql_expression` 或 `python_expression` 生成器的列）。若引用了另一个表达式列，配置校验阶段将报错。计算列的执行规则见专题 7。
-
 ---
-
-### 3.25 `python_expression` — Python 表达式生成器
-
-**输出类型**：任意（根据表达式结果）
-
-允许用户通过 Python 表达式生成数据，表达式中可引用其他列的值。表达式中仅支持 Python 标准库函数，以确保安全性和可预测性。适用于需要进行复杂逻辑处理或数据转换的场景。
-
-#### 完整配置结构
-
-```json
-{
-  "expression": "${name}.upper() + '_' + str(${id})",
-  "null_percentage": 0.05,
-  "unique": false
-}
-```
-
-#### 配置项说明
-
-| 配置项 | 类型 | 必填 | 说明 | 默认值 |
-|--------|------|------|------|--------|
-| expression | string | 是 | Python 表达式字符串。表达式中可以使用 `${column_name}` 引用当前表中的其他列。仅支持 Python 标准库函数。 | -- |
-| null_percentage | number | 否 | 生成空值的概率，范围 [0,1] | 0 |
-| unique | boolean | 否 | 生成值是否唯一 | false |
-
-> **引用限制**：`${column_name}` 只能引用同表中的**非表达式列**（即未配置 `sql_expression` 或 `python_expression` 生成器的列）。若引用了另一个表达式列，配置校验阶段将报错。计算列的执行规则见专题 7。
-
----
-
 
 ## 附录：数据类型速查
 
