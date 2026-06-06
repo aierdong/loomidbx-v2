@@ -14,12 +14,8 @@ LoomiDBX 是桌面端应用。因此，本文中的 API 不限定为公网 HTTP 
 | 实现形态 | 契约映射 |
 |---|---|
 | Wails（Go + Vue3） | Go Service / App Method + Wails Binding + Event |
-| Tauri | Command + Event |
-| Electron | IPC Channel |
-| 本地 HTTP 服务 | REST + SSE |
-| 纯本地前端服务层 | TypeScript Service Interface |
 
-本项目优先采用 Wails。推荐做法是：先在 Go 后端设计清晰的服务层契约，再由 Wails 将少量 Facade 方法绑定给 Vue3 前端调用。不要把所有业务逻辑直接写在 Wails 绑定方法中。
+本项目采用 Wails。推荐做法是：先在 Go 后端设计清晰的服务层契约，再由 Wails 将少量 Facade 方法绑定给 Vue3 前端调用。不要把所有业务逻辑直接写在 Wails 绑定方法中。
 
 核心目标：
 
@@ -715,6 +711,8 @@ type ColumnDTO = {
 
 字段生成规则归属 Schema 层，与 Project 分离。
 
+生成器 API 应保持通用，不为某个具体生成器新增专属接口。新增生成器时，推荐只新增后端生成器实现、参数 schema、帮助文档和可选前端专用配置组件，不修改 Wails 绑定方法和前端主配置页面。
+
 ### 9.1 获取生成器清单
 
 ```http
@@ -724,19 +722,131 @@ GET /api/generators
 响应：
 
 ```ts
+type DataMappingType = "text" | "integer" | "float" | "boolean" | "datetime";
+
+type LocalizedText = Record<string, string>;
+
 type GeneratorDefinitionDTO = {
   name: string;
   label: string;
-  dataMappingTypes: Array<"text" | "integer" | "float" | "boolean" | "datetime">;
+  category?: string;
+  version: string;
+
+  dataMappingTypes: DataMappingType[];
   supportedDbTypes?: DbType[];
+
   parameterSchema: JsonSchema;
   uiSchema?: unknown;
+
+  help?: GeneratorHelpSummaryDTO;
+  capabilities: GeneratorCapabilitiesDTO;
+  resources?: GeneratorResourceDTO[];
+
+  /** 当前生成器参数 schema 版本。仅在破坏性参数结构变更时递增。 */
+  configSchemaVersion?: number;
+
+  /** 后端当前可直接读取的最小参数 schema 版本。过旧配置应提示用户重新配置或执行升级。 */
+  minReadableConfigSchemaVersion?: number;
+};
+
+type GeneratorCapabilitiesDTO = {
+  supportsSeed: boolean;
+  supportsUnique: boolean;
+  supportsNull: boolean;
+  requiresPrepare: boolean;
+  usesExternalData: boolean;
+  isDeterministic: boolean;
+  supportsPreview: boolean;
+  supportsBatch: boolean;
+  mayCallNetwork: boolean;
+};
+
+type GeneratorHelpSummaryDTO = {
+  summary: LocalizedText;
+  format: "markdown";
+  contentRef?: string;
+  links?: GeneratorHelpLinkDTO[];
+};
+
+type GeneratorHelpLinkDTO = {
+  label: LocalizedText;
+  url: string;
+};
+
+type GeneratorResourceDTO = {
+  name: string;
+  version: string;
+  required: boolean;
 };
 ```
 
-`parameterSchema` 推荐使用 JSON Schema。它用于描述不同生成器的参数结构。
+说明：
 
-### 9.2 获取字段生成配置
+- `parameterSchema` 推荐使用 JSON Schema，用于描述不同生成器的参数结构。
+- `uiSchema` 用于补充前端表单展示信息，例如字段顺序、控件类型、占位提示、分组等。
+- `capabilities` 用于声明生成器是否支持 `seed`、`unique`、`null_percentage`、预加载、预览、网络访问等能力，前端和执行引擎不应通过硬编码生成器名称判断能力。
+- `help.summary` 用于生成器列表或配置面板中的短说明。
+- `help.contentRef` 表示帮助详情资源引用。前端打开帮助面板时，可通过 `GET /api/generators/{name}/help?locale=zh-CN` 懒加载完整 Markdown 内容。
+- `configSchemaVersion` 仅用于生成器参数结构的破坏性变更。新增可选字段、增加默认值、调整 UI 展示不应提升该版本。
+
+Wails 映射建议：
+
+```ts
+generator.list(): Promise<GeneratorDefinitionDTO[]>;
+```
+
+### 9.2 获取生成器帮助详情
+
+```http
+GET /api/generators/{name}/help?locale=zh-CN
+```
+
+响应：
+
+```ts
+type GeneratorHelpContentDTO = {
+  name: string;
+  locale: string;
+  fallbackLocale?: string;
+  format: "markdown";
+  content: string;
+  links?: GeneratorHelpLinkDTO[];
+};
+```
+
+示例响应：
+
+```json
+{
+  "name": "isbn",
+  "locale": "zh-CN",
+  "format": "markdown",
+  "content": "## 用途\n\n用于生成符合 ISBN-10 或 ISBN-13 校验规则的图书编号。\n\n## 参数说明\n\n- `version`：选择 ISBN-10 或 ISBN-13。\n- `separator`：控制输出是否包含连字符。\n\n## 注意事项\n\n1. ISBN 校验位由系统自动计算。\n2. 开启唯一性时，请确保生成空间足够大。",
+  "links": [
+    {
+      "label": {
+        "zh-CN": "ISBN 说明",
+        "en-US": "About ISBN"
+      },
+      "url": "https://en.wikipedia.org/wiki/ISBN"
+    }
+  ]
+}
+```
+
+说明：
+
+- 帮助正文推荐使用 Markdown 子集。
+- 前端渲染 Markdown 时应禁用原始 HTML，避免 XSS 风险。
+- 如果指定语言不存在，后端可回退到默认语言，并在 `fallbackLocale` 中返回实际使用的语言。
+
+Wails 映射建议：
+
+```ts
+generator.getHelp(name: string, locale: string): Promise<GeneratorHelpContentDTO>;
+```
+
+### 9.3 获取字段生成配置
 
 ```http
 GET /api/columns/{columnId}/generator-config
@@ -758,7 +868,7 @@ GET /api/columns/{columnId}/generator-config
 }
 ```
 
-### 9.3 保存字段生成配置
+### 9.4 保存字段生成配置
 
 ```http
 PUT /api/columns/{columnId}/generator-config
@@ -776,7 +886,48 @@ PUT /api/columns/{columnId}/generator-config
 }
 ```
 
-### 9.4 预览生成值
+保存时，后端应调用对应生成器的通用配置校验逻辑。若旧配置可以兼容读取，保存时推荐写回当前参数结构。
+
+### 9.5 校验字段生成配置
+
+```http
+POST /api/columns/{columnId}/generator-config/validate
+```
+
+请求：
+
+```json
+{
+  "generatorName": "email",
+  "dataMappingType": "text",
+  "params": {
+    "domain": "example.com"
+  }
+}
+```
+
+响应：
+
+```ts
+type ValidateGeneratorConfigResult = {
+  valid: boolean;
+  normalizedParams?: unknown;
+  issues: Array<{
+    level: "error" | "warning" | "info";
+    code: string;
+    message: string;
+    path?: string;
+  }>;
+};
+```
+
+说明：
+
+- `normalizedParams` 可返回补齐默认值、兼容旧结构后的参数。
+- 前端保存时可以使用 `normalizedParams` 覆盖本地表单值。
+- 生成器参数版本兼容应优先采用“读取时兼容、保存时写新结构”的策略，而不是每次应用启动批量迁移所有历史配置。
+
+### 9.6 预览生成值
 
 ```http
 POST /api/columns/{columnId}/generator-config/preview
@@ -808,6 +959,18 @@ POST /api/columns/{columnId}/generator-config/preview
   ],
   "warnings": []
 }
+```
+
+说明：
+
+- 预览接口保持通用，不为具体生成器增加专属预览方法。
+- 如果生成器声明 `supportsPreview = false`，后端应返回明确错误或前端隐藏预览入口。
+- 对可能访问网络或产生费用的生成器，例如 `ai_generator`，前端应根据 `capabilities.mayCallNetwork` 给出提示。
+
+Wails 映射建议：
+
+```ts
+generator.preview(input: PreviewGeneratorInput): Promise<PreviewGeneratorResult>;
 ```
 
 ---
