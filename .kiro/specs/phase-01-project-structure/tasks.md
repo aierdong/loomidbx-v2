@@ -37,7 +37,7 @@
   - 完成后，前端启动后能进入 bootstrap 骨架验证页，并可显示 loading、ready 或 error 状态。
   - _Requirements: 1.4, 3.1, 3.2, 3.4, 4.4, 7.2, 7.4_
   - _Boundary: FrontendModuleLayout_
-- [ ] 3.2 (P) 建立前端 API client 与类型边界
+- [x] 3.2 (P) 建立前端 API client 与类型边界
   - 提供统一 API client 封装 Wails generated bindings，并把错误转换为稳定的结果类型。
   - 建立 bootstrap DTO 和共享类型位置，页面、组件和 store 不直接依赖 generated bindings。
   - 完成后，静态搜索可确认 generated bindings 只被 API client 封装层直接使用。
