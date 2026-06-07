@@ -65,7 +65,7 @@
   - 完成后，开发者能从 README 和架构文档判断新增代码应放入哪个边界。
   - _Requirements: 1.1, 2.1, 2.4, 3.1, 3.2, 5.1, 5.2, 5.3, 5.4, 7.3, 7.4_
   - _Boundary: ProjectStructureDocs_
-- [ ] 5.2 编写命令、验证和隐私说明
+- [x] 5.2 编写命令、验证和隐私说明
   - 记录 setup、doctor、dev、build、format、lint、test 的当前能力和 deferred 状态。
   - 明确骨架阶段不要求真实数据库凭据、Schema、生成数据、Project 配置、用户 SQL 或远端账号数据，也不会上传这些本地产品数据。
   - 完成后，命令文档能区分当前可验证能力与延后到 phase-01-test-tooling 的完整测试能力。
