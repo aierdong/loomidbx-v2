@@ -1,0 +1,46 @@
+version: '3'
+
+vars:
+  FRONTEND_DIR: frontend
+
+tasks:
+  setup:
+    desc: 安装当前工程骨架所需的前端依赖
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} install
+
+  doctor:
+    desc: 检查 Go、Node.js、npm、wails3 和平台前置条件
+    cmds:
+      - go run ./scripts/doctor.go
+
+  dev:
+    desc: 启动 Wails v3 开发模式
+    deps: [doctor]
+    cmds:
+      - wails3 dev
+
+  build:
+    desc: 构建前端并交给 Wails v3 构建桌面应用
+    deps: [doctor]
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} run build
+      - wails3 build
+
+  format:
+    desc: 格式化 Go 代码并检查前端格式
+    cmds:
+      - gofmt -w app.go main.go scripts/doctor.go internal/projectstructure/*.go
+      - npm --prefix {{.FRONTEND_DIR}} run format
+
+  lint:
+    desc: 运行当前骨架阶段的静态检查
+    cmds:
+      - go vet ./...
+      - npm --prefix {{.FRONTEND_DIR}} run lint
+
+  test:
+    desc: 运行当前骨架阶段的后端测试与前端类型测试
+    cmds:
+      - go test ./...
+      - npm --prefix {{.FRONTEND_DIR}} run test
