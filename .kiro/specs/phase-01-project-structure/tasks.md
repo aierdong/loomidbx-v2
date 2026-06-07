@@ -31,7 +31,7 @@
   - _Boundary: BackendModuleLayout_
 
 - [ ] 3. 实现前端骨架与样式基础设施
-- [ ] 3.1 (P) 建立 Vue 应用 shell、路由和状态样例
+- [x] 3.1 (P) 建立 Vue 应用 shell、路由和状态样例
   - 建立最小 Vue 应用入口、应用 shell、bootstrap 页面、路由配置和 bootstrap 调用状态管理。
   - 页面只展示骨架状态，不呈现 Project、Schema、配置、生成执行或其他完整业务工作流。
   - 完成后，前端启动后能进入 bootstrap 骨架验证页，并可显示 loading、ready 或 error 状态。
