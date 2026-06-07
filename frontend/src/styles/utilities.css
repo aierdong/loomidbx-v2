@@ -1,0 +1,9 @@
+.text-muted {
+  color: var(--loomi-muted);
+}
+
+.surface-card {
+  background: #ffffff;
+  border: 1px solid #d9e2ef;
+  border-radius: 1rem;
+}

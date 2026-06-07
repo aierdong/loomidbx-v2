@@ -43,7 +43,7 @@
   - 完成后，静态搜索可确认 generated bindings 只被 API client 封装层直接使用。
   - _Requirements: 4.1, 4.3, 4.4, 3.1, 3.2_
   - _Boundary: FrontendBootstrapClient, GeneratedBindingsBoundary_
-- [ ] 3.3 (P) 集成 PrimeVue styled mode 与主题落位
+- [x] 3.3 (P) 集成 PrimeVue styled mode 与主题落位
   - 使用 PrimeVue styled mode 和 Aura preset 建立当前阶段可用的 UI 主题基础。
   - 集中管理 theme preset、design tokens、dark mode selector、cssLayer、global styles 和 utility classes。
   - 完成后，PrimeVue 未启用完全 unstyled mode，主题配置和全局样式都有明确落位与迁移说明。
