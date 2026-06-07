@@ -51,7 +51,7 @@
   - _Boundary: PrimeVueThemeIntegration_
 
 - [ ] 4. 完成前后端闭环集成
-- [ ] 4.1 连接 bootstrap 调用链路
+- [x] 4.1 连接 bootstrap 调用链路
   - 将前端 API client、生成绑定、后端 facade 和 bootstrap service 连接为一个最小调用闭环。
   - 调用失败时由 API client 转换为页面可展示的错误，不泄露底层绑定细节或原始堆栈。
   - 完成后，Wails dev/build 可在具备前置工具的环境中展示 bootstrap 状态，缺少前置工具时由 doctor 给出明确提示。

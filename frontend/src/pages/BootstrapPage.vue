@@ -5,10 +5,15 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import AppStatusCard from '@/components/AppStatusCard.vue'
-import { useBootstrapStore } from '@/stores/bootstrapStore'
+import { loadBootstrapStatus, useBootstrapStore } from '@/stores/bootstrapStore'
 
 const view = useBootstrapStore()
+
+onMounted(() => {
+  void loadBootstrapStatus()
+})
 </script>
 
 <style scoped>
