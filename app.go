@@ -1,23 +1,20 @@
 package main
 
+import "github.com/loomidbx/loomidbx-v2/internal/bootstrap"
+
 const (
 	ApplicationName    = "LoomiDBX"
 	ApplicationVersion = "0.1.0"
 )
 
 type App struct {
-	name    string
-	version string
+	bootstrap *bootstrap.Service
 }
 
 func NewApp() *App {
-	return &App{name: ApplicationName, version: ApplicationVersion}
+	return &App{bootstrap: bootstrap.NewService(ApplicationName, ApplicationVersion)}
 }
 
-func (a *App) Name() string {
-	return a.name
-}
-
-func (a *App) Version() string {
-	return a.version
+func (a *App) BootstrapStatus() bootstrap.Status {
+	return a.bootstrap.Status()
 }
