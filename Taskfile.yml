@@ -2,6 +2,7 @@ version: "3"
 
 vars:
   FRONTEND_DIR: frontend
+  DESKTOP_BIN: bin/loomidbx
 
 tasks:
   setup:
@@ -21,44 +22,94 @@ tasks:
       - wails3 dev
 
   build:
-    desc: 构建前端并交给 Wails v3 构建桌面应用
+    desc: 标准桌面构建：先构建前端，再交给 Wails v3 构建桌面应用
     deps: [doctor]
     cmds:
-      - npm --prefix {{.FRONTEND_DIR}} run build
+      - task: build:frontend
       - wails3 build
+
+  build:frontend:
+    desc: 构建 Vue 前端产物，供 Wails 或 fallback 构建使用
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} run build
+
+  build:fallback:
+    desc: 骨架级 fallback 构建：前端 build + Go build；不能替代完整 Wails build
+    cmds:
+      - task: build:frontend
+      - go build -o {{.DESKTOP_BIN}} .
 
   format:
     desc: 格式化 Go 代码并检查前端格式
     cmds:
-      - gofmt -w app.go main.go scripts/doctor.go internal/projectstructure/*.go
+      - task: format:go
+      - task: format:frontend
+
+  format:go:
+    desc: 格式化当前 Git 跟踪的全部 Go 源码
+    cmds:
+      - bash -lc "git ls-files '*.go' | xargs gofmt -w"
+
+  format:frontend:
+    desc: 检查前端 Prettier 格式
+    cmds:
       - npm --prefix {{.FRONTEND_DIR}} run format
 
   lint:
-    desc: 运行当前骨架阶段的静态检查
+    desc: 运行 Go 静态检查和前端 lint/typecheck
+    cmds:
+      - task: lint:go
+      - task: lint:frontend
+
+  lint:go:
+    desc: 对全部 Go package 运行 go vet
     cmds:
       - go vet ./...
+
+  lint:frontend:
+    desc: 运行前端 lint 入口；当前阶段映射到 TypeScript/Vue typecheck
+    cmds:
       - npm --prefix {{.FRONTEND_DIR}} run lint
 
   windows:build:
-    desc: Wails v3 Windows 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    desc: Wails v3 Windows 平台 fallback 构建任务，执行前端构建和 Go 可执行文件构建
     cmds:
-      - npm --prefix {{.FRONTEND_DIR}} run build
+      - task: build:frontend
       - go build -o bin/loomidbx.exe .
 
   darwin:build:
-    desc: Wails v3 macOS 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    desc: Wails v3 macOS 平台 fallback 构建任务，执行前端构建和 Go 可执行文件构建
     cmds:
-      - npm --prefix {{.FRONTEND_DIR}} run build
+      - task: build:frontend
       - go build -o bin/loomidbx .
 
   linux:build:
-    desc: Wails v3 Linux 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    desc: Wails v3 Linux 平台 fallback 构建任务，执行前端构建和 Go 可执行文件构建
     cmds:
-      - npm --prefix {{.FRONTEND_DIR}} run build
+      - task: build:frontend
       - go build -o bin/loomidbx .
 
   test:
-    desc: 运行当前骨架阶段的后端测试与前端类型测试
+    desc: 运行当前骨架阶段的后端测试与前端样例验证
+    cmds:
+      - task: test:go
+      - task: test:frontend
+
+  test:go:
+    desc: 运行当前所有 Go package tests，不依赖真实数据库或远端服务
     cmds:
       - go test ./...
+
+  test:frontend:
+    desc: 运行前端 deterministic 样例测试
+    cmds:
       - npm --prefix {{.FRONTEND_DIR}} run test
+
+  verify:
+    desc: 聚合最小质量门：doctor、format、lint、test、build 按确定顺序执行
+    cmds:
+      - task: doctor
+      - task: format
+      - task: lint
+      - task: test
+      - task: build

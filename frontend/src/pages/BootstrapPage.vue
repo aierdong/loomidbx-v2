@@ -1,19 +1,26 @@
 <template>
   <main class="bootstrap-page">
-    <AppStatusCard :state="view.state" :title="view.title" :message="view.message" />
+    <AppStatusCard
+      :state="view.state"
+      :title="view.title"
+      :message="view.message"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import AppStatusCard from '@/components/AppStatusCard.vue'
-import { loadBootstrapStatus, useBootstrapStore } from '@/stores/bootstrapStore'
+import { onMounted } from "vue";
+import AppStatusCard from "@/components/AppStatusCard.vue";
+import {
+  loadBootstrapStatus,
+  useBootstrapStore,
+} from "@/stores/bootstrapStore";
 
-const view = useBootstrapStore()
+const view = useBootstrapStore();
 
 onMounted(() => {
-  void loadBootstrapStatus()
-})
+  void loadBootstrapStatus();
+});
 </script>
 
 <style scoped>

@@ -1,25 +1,25 @@
 import type {
   SettingsView as SettingsViewDto,
   UpdateSettingsInput as UpdateSettingsInputDto,
-} from '@/types/settings'
+} from "@/types/settings";
 
 const defaultSettingsView: SettingsViewDto = {
   appearance: {
-    language: 'zh',
-    theme: 'system',
+    language: "zh",
+    theme: "system",
   },
   paths: {
-    dataDir: '',
-    configFile: '',
+    dataDir: "",
+    configFile: "",
   },
   development: {
-    mode: 'desktop',
+    mode: "desktop",
     useIsolatedDataDir: false,
     diagnosticsEnabled: false,
   },
   integrations: {
     account: {
-      status: 'unavailable',
+      status: "unavailable",
     },
     llm: {
       configured: false,
@@ -29,10 +29,10 @@ const defaultSettingsView: SettingsViewDto = {
     localOnly: true,
     telemetryEnabled: false,
   },
-}
+};
 
 export async function GetSettings(): Promise<SettingsViewDto> {
-  return defaultSettingsView
+  return defaultSettingsView;
 }
 
 export async function UpdateSettings(
@@ -56,5 +56,5 @@ export async function UpdateSettings(
       ...defaultSettingsView.privacy,
       ...input.privacy,
     },
-  }
+  };
 }

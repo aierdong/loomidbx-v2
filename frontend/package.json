@@ -10,7 +10,7 @@
     "typecheck": "vue-tsc --noEmit",
     "lint": "vue-tsc --noEmit",
     "format": "prettier --check .",
-    "test": "vue-tsc --noEmit"
+    "test": "vitest run"
   },
   "dependencies": {
     "@primeuix/themes": "^1.2.5",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "prettier": "^3.7.3"
+    "prettier": "^3.7.3",
+    "vitest": "^4.1.8"
   }
 }

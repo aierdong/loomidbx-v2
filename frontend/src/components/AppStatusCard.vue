@@ -8,10 +8,10 @@
 
 <script setup lang="ts">
 defineProps<{
-  state: 'loading' | 'ready' | 'error'
-  title: string
-  message: string
-}>()
+  state: "loading" | "ready" | "error";
+  title: string;
+  message: string;
+}>();
 </script>
 
 <style scoped>

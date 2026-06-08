@@ -8,13 +8,57 @@ import (
 	"strings"
 )
 
+type prerequisiteStatus string
+
+const (
+	// prerequisiteReady means the local tool exists and satisfies the configured minimum version.
+	prerequisiteReady prerequisiteStatus = "ready"
+
+	// prerequisiteMissing means the local tool command could not run.
+	prerequisiteMissing prerequisiteStatus = "missing"
+
+	// prerequisiteUnsupported means the local tool exists but does not satisfy the configured minimum version.
+	prerequisiteUnsupported prerequisiteStatus = "unsupported"
+)
+
 type prerequisite struct {
-	Name        string
-	Command     string
-	Args        []string
-	Minimum     string
+	// Name is the developer-readable prerequisite label printed by doctor.
+	Name string
+
+	// Command is the executable name resolved from PATH.
+	Command string
+
+	// Args are passed to Command to retrieve version or diagnostic output.
+	Args []string
+
+	// Minimum is the optional minimum major.minor version required by this project.
+	Minimum string
+
+	// InstallHint explains the next local action when the prerequisite is missing or unsupported.
 	InstallHint string
-	Required    bool
+
+	// Required marks whether this prerequisite blocks the standard validation path.
+	Required bool
+}
+
+type prerequisiteResult struct {
+	// Status describes whether the prerequisite is ready, missing, or unsupported.
+	Status prerequisiteStatus
+
+	// Name is copied from the checked prerequisite for reporting.
+	Name string
+
+	// Version is the first line of successful command output.
+	Version string
+
+	// Diagnostic contains the command failure or version mismatch detail.
+	Diagnostic string
+
+	// Action contains the next local step the developer can take.
+	Action string
+
+	// Blocking is true when the result should make doctor fail.
+	Blocking bool
 }
 
 func main() {
@@ -45,43 +89,71 @@ func main() {
 			Name:        "wails3",
 			Command:     "wails3",
 			Args:        []string{"doctor"},
-			InstallHint: "安装 Wails v3 CLI：go install github.com/wailsapp/wails/v3/cmd/wails3@latest，并确认 GOPATH/bin 已加入 PATH",
+			InstallHint: "安装 Wails v3 CLI：go install github.com/wailsapp/wails/v3/cmd/wails3@latest，并确认 GOPATH/bin 已加入 PATH；安装后可运行 wails3 doctor 查看平台依赖。",
 			Required:    true,
 		},
 	}
 
 	fmt.Println("LoomiDBX doctor")
-	fmt.Println("检查本地开发工具链；不会读取或上传业务数据。")
+	fmt.Println("检查本地开发工具链；不会读取或上传数据库连接、Schema、生成数据、Project 配置、用户 SQL 或远端账号数据。")
 	fmt.Printf("平台：%s/%s\n\n", runtime.GOOS, runtime.GOARCH)
 
-	missingRequired := false
+	blockingFailure := false
 	for _, check := range checks {
 		output, err := run(check.Command, check.Args...)
-		if err != nil {
-			fmt.Printf("[缺失] %s：%v\n", check.Name, err)
-			fmt.Printf("       下一步：%s\n", check.InstallHint)
-			if check.Required {
-				missingRequired = true
-			}
-			continue
-		}
-
-		version := firstLine(output)
-		fmt.Printf("[就绪] %s：%s\n", check.Name, version)
-		if check.Minimum != "" && !meetsMinimumVersion(version, check.Minimum) {
-			fmt.Printf("       最低版本：%s；如版本过低，请升级。%s\n", check.Minimum, check.InstallHint)
+		result := evaluatePrerequisite(check, output, err)
+		printPrerequisiteResult(result)
+		if result.Blocking {
+			blockingFailure = true
 		}
 	}
 
 	fmt.Println()
 	printPlatformHint()
 
-	if missingRequired {
-		fmt.Println("doctor 完成：存在缺失前置工具。请按上述提示安装后重试。")
-		return
+	if blockingFailure {
+		fmt.Println("doctor 完成：存在缺失或版本不满足的前置工具。请按上述提示安装或升级后重试。")
+		os.Exit(1)
 	}
 
 	fmt.Println("doctor 完成：基础工具链已就绪。")
+}
+
+func evaluatePrerequisite(check prerequisite, output string, err error) prerequisiteResult {
+	result := prerequisiteResult{
+		Name:   check.Name,
+		Action: check.InstallHint,
+	}
+	if err != nil {
+		result.Status = prerequisiteMissing
+		result.Diagnostic = err.Error()
+		result.Blocking = check.Required
+		return result
+	}
+
+	result.Version = firstLine(output)
+	if check.Minimum != "" && !meetsMinimumVersion(result.Version, check.Minimum) {
+		result.Status = prerequisiteUnsupported
+		result.Diagnostic = fmt.Sprintf("最低版本：%s；当前输出：%s", check.Minimum, result.Version)
+		result.Blocking = check.Required
+		return result
+	}
+
+	result.Status = prerequisiteReady
+	return result
+}
+
+func printPrerequisiteResult(result prerequisiteResult) {
+	switch result.Status {
+	case prerequisiteMissing:
+		fmt.Printf("[缺失] %s：%s\n", result.Name, result.Diagnostic)
+		fmt.Printf("       下一步：%s\n", result.Action)
+	case prerequisiteUnsupported:
+		fmt.Printf("[版本不足] %s：%s\n", result.Name, result.Diagnostic)
+		fmt.Printf("       下一步：%s\n", result.Action)
+	default:
+		fmt.Printf("[就绪] %s：%s\n", result.Name, result.Version)
+	}
 }
 
 func run(command string, args ...string) (string, error) {
@@ -164,8 +236,4 @@ func printPlatformHint() {
 	default:
 		fmt.Printf("平台提示：%s 可能需要额外桌面运行依赖，请参考 Wails v3 文档。\n", runtime.GOOS)
 	}
-}
-
-func init() {
-	_ = os.Args
 }
