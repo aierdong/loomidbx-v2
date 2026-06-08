@@ -1,83 +1,83 @@
 # Implementation Plan
 
-- [ ] 1. 建立项目运行基础与命令入口
-- [ ] 1.1 创建 Wails + Go + Vue 的基础应用配置
+- [x] 1. 建立项目运行基础与命令入口
+- [x] 1.1 创建 Wails + Go + Vue 的基础应用配置
   - 建立 Go 模块、Wails 项目配置、前端包配置和基础 TypeScript/Vite 配置，让仓库能被识别为同一个桌面应用工程。
   - 固定当前阶段使用的包管理器和核心脚本名称，避免后续 spec 依赖不明确的启动入口。
   - 完成后，仓库根目录可看到桌面入口、后端入口、前端工程、生成绑定落位、文档和测试目录的基础结构。
   - _Requirements: 1.1, 1.4, 6.1_
-- [ ] 1.2 实现工具链诊断和统一任务命令
+- [x] 1.2 实现工具链诊断和统一任务命令
   - 提供 setup、doctor、dev、build、format、lint、test 的统一入口，并让命令在缺少 Go、Node/npm 或 wails3 时输出可执行安装提示。
   - doctor 只检查本地工具链和平台前置条件，不读取或上传业务数据。
   - 完成后，运行约定的 doctor 命令会成功结束，或明确指出缺失工具、最低版本和下一步安装命令。
   - _Requirements: 1.2, 1.3, 6.1, 6.2, 6.3, 6.4, 7.1_
 
-- [ ] 2. 实现后端骨架与模块边界
-- [ ] 2.1 实现最小 bootstrap 服务
+- [x] 2. 实现后端骨架与模块边界
+- [x] 2.1 实现最小 bootstrap 服务
   - 提供骨架级应用状态能力，返回应用名称、版本、runtime、ready 状态和开发者可读消息。
   - 保持该能力 deterministic，不读取真实配置、数据库连接、Schema、生成配置、用户 SQL 或远端账号信息。
   - 完成后，后端单元测试可断言应用名、runtime 和 ready 状态，且测试不依赖网络、数据库或本地业务数据。
   - _Requirements: 1.4, 4.4, 6.2, 7.2_
-- [ ] 2.2 建立前端可见的后端 facade 边界
+- [x] 2.2 建立前端可见的后端 facade 边界
   - 将前端可调用入口限制为薄 facade，复杂规则只允许转发到 service 边界。
   - 为最小 bootstrap/health 调用提供稳定入口，不暴露任何真实数据库或生成能力。
   - 完成后，Wails 绑定可围绕 facade 生成，且 facade 代码中看不到数据库访问、配置读取或生成执行逻辑。
   - _Requirements: 2.2, 4.2, 4.4, 7.2_
-- [ ] 2.3 (P) 标注后端预留模块的职责边界
+- [x] 2.3 (P) 标注后端预留模块的职责边界
   - 为 domain、service、repository、config、storage、dbx、engine、generator 等后端模块补充占位说明。
   - 明确哪些能力属于后续配置、本地存储、数据库方言、生成引擎或生成器 spec，当前只提供落位。
   - 完成后，每个预留模块都有可追踪说明，且不会声明未实现的业务能力已经可用。
   - _Requirements: 2.1, 2.3, 2.4, 5.1, 5.2, 5.3, 5.4, 7.3, 7.4_
   - _Boundary: BackendModuleLayout_
 
-- [ ] 3. 实现前端骨架与样式基础设施
-- [ ] 3.1 (P) 建立 Vue 应用 shell、路由和状态样例
+- [x] 3. 实现前端骨架与样式基础设施
+- [x] 3.1 (P) 建立 Vue 应用 shell、路由和状态样例
   - 建立最小 Vue 应用入口、应用 shell、bootstrap 页面、路由配置和 bootstrap 调用状态管理。
   - 页面只展示骨架状态，不呈现 Project、Schema、配置、生成执行或其他完整业务工作流。
   - 完成后，前端启动后能进入 bootstrap 骨架验证页，并可显示 loading、ready 或 error 状态。
   - _Requirements: 1.4, 3.1, 3.2, 3.4, 4.4, 7.2, 7.4_
   - _Boundary: FrontendModuleLayout_
-- [ ] 3.2 (P) 建立前端 API client 与类型边界
+- [x] 3.2 (P) 建立前端 API client 与类型边界
   - 提供统一 API client 封装 Wails generated bindings，并把错误转换为稳定的结果类型。
   - 建立 bootstrap DTO 和共享类型位置，页面、组件和 store 不直接依赖 generated bindings。
   - 完成后，静态搜索可确认 generated bindings 只被 API client 封装层直接使用。
   - _Requirements: 4.1, 4.3, 4.4, 3.1, 3.2_
   - _Boundary: FrontendBootstrapClient, GeneratedBindingsBoundary_
-- [ ] 3.3 (P) 集成 PrimeVue styled mode 与主题落位
+- [x] 3.3 (P) 集成 PrimeVue styled mode 与主题落位
   - 使用 PrimeVue styled mode 和 Aura preset 建立当前阶段可用的 UI 主题基础。
   - 集中管理 theme preset、design tokens、dark mode selector、cssLayer、global styles 和 utility classes。
   - 完成后，PrimeVue 未启用完全 unstyled mode，主题配置和全局样式都有明确落位与迁移说明。
   - _Requirements: 3.1, 3.3_
   - _Boundary: PrimeVueThemeIntegration_
 
-- [ ] 4. 完成前后端闭环集成
-- [ ] 4.1 连接 bootstrap 调用链路
+- [x] 4. 完成前后端闭环集成
+- [x] 4.1 连接 bootstrap 调用链路
   - 将前端 API client、生成绑定、后端 facade 和 bootstrap service 连接为一个最小调用闭环。
   - 调用失败时由 API client 转换为页面可展示的错误，不泄露底层绑定细节或原始堆栈。
   - 完成后，Wails dev/build 可在具备前置工具的环境中展示 bootstrap 状态，缺少前置工具时由 doctor 给出明确提示。
   - _Requirements: 1.2, 1.4, 4.1, 4.2, 4.3, 4.4, 6.2_
   - _Depends: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2_
 
-- [ ] 5. 固化结构文档与范围边界
-- [ ] 5.1 (P) 编写工程结构和相邻 spec 落位说明
+- [x] 5. 固化结构文档与范围边界
+- [x] 5.1 (P) 编写工程结构和相邻 spec 落位说明
   - 说明根目录、后端模块、前端模块、生成绑定、文档和测试目录的职责边界。
   - 标注配置、本地存储、数据库方言、生成引擎和生成器由后续 spec 完成，当前不实现完整能力。
   - 完成后，开发者能从 README 和架构文档判断新增代码应放入哪个边界。
   - _Requirements: 1.1, 2.1, 2.4, 3.1, 3.2, 5.1, 5.2, 5.3, 5.4, 7.3, 7.4_
   - _Boundary: ProjectStructureDocs_
-- [ ] 5.2 编写命令、验证和隐私说明
+- [x] 5.2 编写命令、验证和隐私说明
   - 记录 setup、doctor、dev、build、format、lint、test 的当前能力和 deferred 状态。
   - 明确骨架阶段不要求真实数据库凭据、Schema、生成数据、Project 配置、用户 SQL 或远端账号数据，也不会上传这些本地产品数据。
   - 完成后，命令文档能区分当前可验证能力与延后到 phase-01-test-tooling 的完整测试能力。
   - _Requirements: 1.2, 1.3, 6.1, 6.2, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 6. 验证骨架范围内的可构建与边界约束
-- [ ] 6.1 运行后端、前端和命令级基础验证
+- [x] 6. 验证骨架范围内的可构建与边界约束
+- [x] 6.1 运行后端、前端和命令级基础验证
   - 运行 Go 格式化、Go 测试、前端类型检查或构建，以及 doctor 命令；若环境缺少前置工具，记录命令输出中的可执行提示。
   - 验证命令不依赖完整配置系统、本地存储、真实数据库连接、Schema 扫描或生成引擎。
   - 完成后，基础验证要么通过，要么以明确的缺失前置工具消息结束。
   - _Requirements: 1.2, 1.3, 6.2, 6.3, 6.4, 7.2_
-- [ ] 6.2 验证结构边界和 deferred 标注
+- [x] 6.2 验证结构边界和 deferred 标注
   - 检查 placeholder 模块、生成绑定目录、前端 API client 规则、测试目录和文档中的范围声明一致。
   - 确认页面、组件和 store 不直接依赖 generated bindings，facade 不承载复杂业务逻辑或数据库访问。
   - 完成后，结构验证结果能证明所有预留能力都被标注为后续 spec，而不是已完成产品功能。
