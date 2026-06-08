@@ -1,8 +1,9 @@
 import {
   createSettingsClient,
-  type SettingsBinding,
   type SettingsClient,
 } from './settingsClient'
+// @ts-expect-error binding details stay private to the API client boundary.
+import type { SettingsBinding } from './settingsClient'
 import type { ApiResult } from './result'
 import type {
   ConfigError,
@@ -44,7 +45,9 @@ const updateInput: UpdateSettingsInput = {
   },
 }
 
-const successBinding: SettingsBinding = {
+type TestSettingsBinding = NonNullable<Parameters<typeof createSettingsClient>[0]>
+
+const successBinding: TestSettingsBinding = {
   GetSettings: () => settingsView,
   UpdateSettings: async () => settingsView,
 }
@@ -62,7 +65,7 @@ const validationError: ConfigError = {
   ],
 }
 
-const failingBinding: SettingsBinding = {
+const failingBinding: TestSettingsBinding = {
   GetSettings: () => {
     throw validationError
   },

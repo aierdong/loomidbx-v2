@@ -143,6 +143,37 @@ func TestGetSettingsConvertsUnexpectedServiceError(t *testing.T) {
 	}
 }
 
+func TestGetSettingsPreservesConfigValidationIssuesFromService(t *testing.T) {
+	issues := []config.ConfigIssue{{
+		Path:     "paths.dataDir",
+		Code:     config.ConfigIssueCodeConfigPathInvalid,
+		Severity: config.ConfigIssueSeverityError,
+		Message:  "数据目录不可写",
+	}}
+	serviceErr := config.ConfigError{
+		Code:    config.ConfigIssueCodeConfigPathInvalid,
+		Message: "配置校验失败",
+		Issues:  issues,
+	}
+	service := &recordingConfigService{currentErr: serviceErr}
+	app := newAppWithConfigService(service)
+
+	_, err := app.GetSettings()
+	if err == nil {
+		t.Fatal("GetSettings() error = nil, want ConfigError")
+	}
+	configErr, ok := err.(config.ConfigError)
+	if !ok {
+		t.Fatalf("GetSettings() error = %T %[1]v, want config.ConfigError", err)
+	}
+	if configErr.Code != config.ConfigIssueCodeConfigPathInvalid {
+		t.Fatalf("ConfigError.Code = %q, want %q", configErr.Code, config.ConfigIssueCodeConfigPathInvalid)
+	}
+	if !reflect.DeepEqual(configErr.Issues, issues) {
+		t.Fatalf("ConfigError.Issues = %+v, want service issues %+v", configErr.Issues, issues)
+	}
+}
+
 type recordingConfigService struct {
 	currentView config.SettingsView
 	currentErr  error

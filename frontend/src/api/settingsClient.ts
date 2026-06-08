@@ -6,7 +6,7 @@ import type { SettingsView, UpdateSettingsInput } from '@/types/settings'
 import type { ApiResult } from './result'
 import { err, ok } from './result'
 
-export interface SettingsBinding {
+interface SettingsBinding {
   GetSettings(): Promise<SettingsView> | SettingsView
   UpdateSettings(
     input: UpdateSettingsInput,
