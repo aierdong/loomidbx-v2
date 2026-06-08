@@ -12,4 +12,4 @@ frontend/.vite/
 .DS_Store
 Thumbs.db
 /.agents
-/.
+/.codex
