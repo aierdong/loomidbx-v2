@@ -1,6 +1,6 @@
 package main
 
-import "github.com/loomidbx/loomidbx-v2/internal/bootstrap"
+import "github.com/gerdong/loomidbx/internal/bootstrap"
 
 const (
 	ApplicationName    = "LoomiDBX"

@@ -1,3 +1,3 @@
-module github.com/loomidbx/loomidbx-v2
+module github.com/gerdong/loomidbx
 
 go 1.25
