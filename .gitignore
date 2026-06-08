@@ -11,3 +11,5 @@ frontend/.vite/
 # Local editor and OS files
 .DS_Store
 Thumbs.db
+/.agents
+/.
