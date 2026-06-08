@@ -115,6 +115,9 @@ func (loader ConfigLoader) Load() (LoadResult, error) {
 
 	fileConfig, fileState, err := loader.Store.Read(readResolved.ConfigFile)
 	if err != nil {
+		if configErr, ok := err.(ConfigError); ok {
+			return LoadResult{Source: sourceFromEnv(env)}, configErr
+		}
 		return LoadResult{Source: sourceFromEnv(env)}, ConfigError{
 			Code:    ConfigIssueCodeConfigLoadFailed,
 			Message: "配置文件读取失败",

@@ -54,6 +54,13 @@ func (JSONConfigFileStore) Read(path string) (UserConfig, FileState, error) {
 		}
 		return UserConfig{}, FileStatePresent, fmt.Errorf("read config file: %w", err)
 	}
+	if issues := (ConfigValidator{}).ValidateConfigJSON(raw); len(issues) != 0 {
+		return UserConfig{}, FileStatePresent, ConfigError{
+			Code:    primaryIssueCode(issues),
+			Message: "配置校验失败",
+			Issues:  issues,
+		}
+	}
 
 	var config UserConfig
 	if err := json.Unmarshal(raw, &config); err != nil {
