@@ -10,6 +10,7 @@
 - `npm --prefix frontend ci`：通过。
 - `npm --prefix frontend run test`：通过，执行 `vue-tsc --noEmit`。
 - `npm --prefix frontend run build`：通过，执行 `vue-tsc --noEmit && vite build`。
+- `wails3 build`：通过；Wails v3 调用 `windows:build` 平台任务，完成前端构建与 Go 可执行文件构建。
 
 ## 范围确认
 

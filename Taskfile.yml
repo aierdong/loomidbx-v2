@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 vars:
   FRONTEND_DIR: frontend
@@ -38,6 +38,24 @@ tasks:
     cmds:
       - go vet ./...
       - npm --prefix {{.FRONTEND_DIR}} run lint
+
+  windows:build:
+    desc: Wails v3 Windows 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} run build
+      - go build -o bin/loomidbx.exe .
+
+  darwin:build:
+    desc: Wails v3 macOS 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} run build
+      - go build -o bin/loomidbx .
+
+  linux:build:
+    desc: Wails v3 Linux 平台构建任务，当前骨架执行前端构建和 Go 可执行文件构建
+    cmds:
+      - npm --prefix {{.FRONTEND_DIR}} run build
+      - go build -o bin/loomidbx .
 
   test:
     desc: 运行当前骨架阶段的后端测试与前端类型测试
