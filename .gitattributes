@@ -1,24 +1,14 @@
-# 1. 自动检测所有文本文件，并在提交到版本库时强制转换为 LF
-* text=auto
+# Normalize all detected text files to LF in both the index and working tree.
+* text=auto eol=lf
 
-# 2. 明确指定特定后缀的文本文件，在检出（Checkout）时根据系统决定，但提交时一律转为 LF
-*.text      text
-*.txt       text
-*.json      text
-*.xml       text
-*.yml       text
-*.yaml      text
-*.md        text
-
-# 3. 对于代码文件，强烈建议无论在什么系统上，检出和提交都强制保持 LF（避免 Windows 编译器/编辑器捣乱）
-*.js        text eol=lf
-*.ts        text eol=lf
-*.vue       text eol=lf
-*.go        text eol=lf
-*.java      text eol=lf
-
-# 4. 声明二进制文件，这些文件 Git 不会触碰其换行符
+# Keep binary files untouched by line-ending normalization.
 *.png       binary
 *.jpg       binary
+*.jpeg      binary
 *.gif       binary
+*.ico       binary
+*.webp      binary
+*.pdf       binary
+*.zip       binary
+*.gz        binary
 *.jar       binary
