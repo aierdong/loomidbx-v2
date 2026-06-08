@@ -33,7 +33,7 @@
 ### Out of Boundary
 - `phase-01-config-system` 负责完整配置加载、默认值、环境变量、用户设置持久化和配置校验。
 - `phase-01-local-storage-strategy` 负责本地数据目录、SQLite 或文件存储策略、迁移和备份策略。
-- `phase-01-database-dialect-interface` 负责真实数据库 adapter、dialect、introspection、type mapping 和 capability 接口实现。
+- `phase-01-database-dialect-interface` 负责 Adapter、Dialect、Introspector、TypeMapper、Capabilities 的最小接口、值对象和 fake 边界；真实数据库 adapter 归后续 spec。
 - `phase-01-test-tooling` 负责完整测试框架选型、覆盖率、CI、契约测试和 E2E 自动化。
 - 后续 Phase 负责领域模型、Schema 扫描、Project、生成引擎、生成器、API 资源和业务 UI 页面。
 - 本 spec 不上传、不读取、不模拟真实用户数据库数据，也不实现远端账号或遥测。
@@ -619,6 +619,7 @@ export interface BootstrapClient {
 - `README.md` 说明项目是什么、当前骨架能做什么、不能做什么。
 - `docs/architecture/project-structure.md` 说明目录职责、依赖方向、bridge 边界和 placeholder 规则。
 - `docs/development/commands.md` 说明命令、前置工具和 deferred 验证。
+- 共享文件所有权：本 spec 只拥有 `Taskfile.yml`、`README.md`、`docs/development/commands.md`、`tests/README.md` 的初始命令入口、骨架说明和 deferred 标注；验证矩阵、聚合顺序、fallback 和测试分层说明由 `phase-01-test-tooling` 扩展维护。
 - 明确本骨架不会上传数据库连接、Schema、生成配置、Project 配置、生成数据或用户 SQL。
 
 **Dependencies**

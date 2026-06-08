@@ -1,10 +1,10 @@
 {
-  "$schema": "https://wails.io/schemas/config.v3.json",
   "name": "LoomiDBX",
-  "outputfilename": "loomidbx",
-  "frontend:dir": "frontend",
-  "frontend:install": "npm install",
-  "frontend:dev": "npm run dev",
-  "frontend:build": "npm run build",
-  "assetdir": "frontend/dist"
+  "frontend": {
+    "dir": "./frontend",
+    "install": "npm install",
+    "build": "npm run build",
+    "dev": "npm run dev",
+    "devServerUrl": "http://localhost:5173"
+  }
 }

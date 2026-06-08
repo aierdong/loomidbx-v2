@@ -1,0 +1,22 @@
+{
+  "feature_name": "phase-01-local-storage-strategy",
+  "created_at": "2026-06-08T14:55:50.1329534+08:00",
+  "updated_at": "2026-06-08T14:55:50.1329534+08:00",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

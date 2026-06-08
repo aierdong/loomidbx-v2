@@ -1,0 +1,87 @@
+# Implementation Plan
+
+- [ ] 1. 固化统一验证命令入口
+- [ ] 1.1 完善分层验证和聚合验证命令
+  - 明确 doctor、format、lint、test、build 和 verify 的执行顺序与职责范围。
+  - 保留现有命令名兼容，并在需要时增加后端、前端或桌面分层命令。
+  - 完成后，开发者可以运行一个聚合入口获得当前最小质量反馈，失败时能看到具体失败阶段。
+  - _Requirements: 1.1, 1.2, 1.4, 6.1_
+  - _Boundary: ValidationCommandMatrix_
+- [ ] 1.2 强化本地前置条件诊断
+  - 确认缺少 Go、Node.js、npm、wails3 或平台依赖时输出可执行安装提示。
+  - 确认诊断不会读取或上传数据库连接、Schema、生成数据、Project 配置、用户 SQL 或远端账号数据。
+  - 完成后，doctor 成功时报告工具链就绪，失败时报告缺失项和下一步命令。
+  - _Requirements: 1.3, 4.1, 4.3, 1.4_
+  - _Boundary: DesktopDiagnostic_
+
+- [ ] 2. 完善后端测试、格式化和静态检查
+- [ ] 2.1 (P) 固化 Go 测试和静态检查范围
+  - 让后端测试入口运行当前所有 Go package tests，并确保不依赖真实数据库或远端服务。
+  - 让后端 lint 入口运行 Go 静态检查，并返回可定位的包级诊断。
+  - 完成后，`go test ./...` 和 Go 静态检查可作为后续后端 spec 的基础验收命令。
+  - _Requirements: 2.1, 2.3, 1.4_
+  - _Boundary: BackendValidation_
+- [ ] 2.2 (P) 固化 Go 格式化检查策略
+  - 覆盖当前项目内所有跟踪的 Go 源码，避免新增包遗漏在格式化之外。
+  - 明确格式化入口是写入源码还是检查差异，并在命令文档中保持一致。
+  - 完成后，新增 Go 文件会被后端格式化入口覆盖。
+  - _Requirements: 2.2, 5.2_
+  - _Boundary: BackendValidation_
+- [ ] 2.3 (P) 补齐后端 deterministic 样例测试
+  - 覆盖 bootstrap service、App facade 或 doctor 解析中的至少一个确定性行为。
+  - 保持样例测试不访问网络、真实数据库、用户目录或远端账号。
+  - 完成后，后端样例测试可以作为后续业务单元测试的最小模式参考。
+  - _Requirements: 2.4, 6.4_
+  - _Boundary: BackendSampleTests_
+
+- [ ] 3. 完善前端验证和样例测试
+- [ ] 3.1 (P) 固化前端 typecheck、lint、format 和 build 脚本
+  - 明确 typecheck、lint、format、test、build 在当前阶段的覆盖范围。
+  - 确保前端验证失败时能输出源码或配置相关诊断。
+  - 完成后，前端脚本可验证 TypeScript/Vue 源码而不依赖完整业务工作流。
+  - _Requirements: 3.1, 3.2, 3.3, 6.1_
+  - _Boundary: FrontendValidation_
+- [ ] 3.2 (P) 建立前端 deterministic 样例验证
+  - 为 API result、bootstrap client、bootstrap store 或等价前端边界提供至少一个样例验证。
+  - 如新增轻量测试依赖，记录该依赖只服务当前样例测试，不扩展为完整 E2E。
+  - 完成后，前端 test 入口不只是命令占位，并能证明一个稳定前端边界。
+  - _Requirements: 3.4, 6.2, 6.4_
+  - _Boundary: FrontendSampleTests_
+
+- [ ] 4. 固化 Wails 桌面构建验证
+- [ ] 4.1 连接桌面 build 与 fallback 语义
+  - 标准 build 入口先运行前端 build，再运行 Wails 桌面构建。
+  - 平台 fallback 只能作为骨架级构建证据，并在命令说明中标注不能替代完整 Wails build。
+  - 完成后，具备 Wails 前置工具的环境可以运行标准桌面构建，缺失时可按文档获得诊断或 fallback 证据。
+  - _Requirements: 4.2, 4.4, 5.2, 5.3_
+  - _Boundary: DesktopBuildValidation_
+  - _Depends: 1.2, 3.1_
+
+- [ ] 5. 更新开发文档和测试边界说明
+- [ ] 5.1 (P) 编写后续 spec 可引用的命令矩阵
+  - 记录 Task 命令和等价原生命令，说明每个命令覆盖什么、不覆盖什么。
+  - 区分普通改动必跑检查、环境依赖检查和可选检查。
+  - 只扩展 `Taskfile.yml`、`README.md` 和 `docs/development/commands.md` 中的验证矩阵、聚合顺序、fallback 与引用语义，不接管工程骨架初始说明。
+  - 完成后，后续 spec 可以直接引用文档中的命令作为验收路径。
+  - _Requirements: 5.1, 5.2, 5.3, 6.2_
+  - _Boundary: CommandDocumentation_
+- [ ] 5.2 (P) 编写测试分层、隐私和延后范围说明
+  - 标注当前覆盖 Go 单元测试、前端类型/样例验证、Wails doctor/build。
+  - 标注业务覆盖率、真实数据库集成、生成器契约、API 契约、UI E2E 和可观测性延后到对应 spec。
+  - 只扩展 `tests/README.md` 和 `tests/smoke/phase-01-validation.md` 的测试分层、当前覆盖和延后范围，不改写 project-structure 的目录职责边界。
+  - 完成后，测试文档不会暗示当前工具链已经覆盖完整业务能力。
+  - _Requirements: 1.4, 4.4, 5.4, 6.3, 6.4_
+  - _Boundary: TestBoundaryDocs_
+
+- [ ] 6. 验证工具链闭环
+- [ ] 6.1 运行并记录最小验证命令结果
+  - 运行后端测试、前端验证、lint、format 和桌面检查或构建入口。
+  - 如果本机缺少 Wails 或平台依赖，记录 doctor 输出中的可执行诊断，并运行文档允许的 fallback。
+  - 完成后，验证结果能证明本 spec 的命令矩阵可运行或可诊断。
+  - _Requirements: 1.2, 1.3, 2.1, 2.3, 3.1, 3.3, 4.1, 4.2, 4.3_
+  - _Depends: 1.1, 1.2, 2.1, 3.1, 4.1_
+- [ ] 6.2 复核需求覆盖和边界声明
+  - 检查每个需求 ID 都映射到至少一个命令、测试、文档或验证任务。
+  - 确认没有引入完整 E2E、覆盖率 gate、远端 CI、可观测性平台或真实数据库依赖。
+  - 完成后，任务闭环可以进入实现阶段，且边界与 Phase 1 测试工具链目标一致。
+  - _Requirements: 1.1, 1.4, 5.1, 5.2, 5.3, 5.4, 6.1, 6.2, 6.3, 6.4_
