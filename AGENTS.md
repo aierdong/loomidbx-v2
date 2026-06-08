@@ -26,6 +26,7 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 
 ## Development Guidelines
 - Think in English, generate responses in Simplified Chinese. All Markdown content written to project files (e.g., requirements.md, design.md, tasks.md, research.md, validation reports) MUST be written in the target language configured for this specification (see spec.json.language).
+- Backend Go code must include necessary comments: constants and enum values require comments; structs and all fields require comments; exported methods require comments that explain purpose, inputs, and outputs. Detailed formatting rules are recorded in `.kiro/steering/tech.md`.
 
 ## Minimal Workflow
 - Phase 0 (optional): `$kiro-steering`, `$kiro-steering-custom`
