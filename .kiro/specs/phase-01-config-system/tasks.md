@@ -55,7 +55,7 @@
   - 完成后，Go 侧可通过 facade 获取设置视图或字段级配置错误。
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
   - _Depends: 3.3_
-- [ ] 4.2 (P) 建立前端设置类型和 API client
+- [x] 4.2 (P) 建立前端设置类型和 API client
   - 定义设置视图、更新输入、配置 issue 等 TypeScript 类型。
   - 封装 generated settings binding，并转换为现有 `ApiResult` 风格。
   - 完成后，前端无需设置页面即可通过 client mock 验证成功和错误分支。
