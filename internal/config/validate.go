@@ -144,7 +144,7 @@ func validateFutureIntegration(prefix string, value FutureIntegrationConfig) []C
 func validatePrivacyBoundary(value PrivacyConfig) []ConfigIssue {
 	var issues []ConfigIssue
 	if value.BusinessData.StoredInAppConfig {
-		issues = append(issues, validationIssue("privacy.businessData.storedInAppConfig", "业务数据不能存入普通应用配置"))
+		issues = append(issues, validationIssue("privacy.businessData.storedInAppConfig", "SQLite 业务存储属于 phase-01-local-storage-strategy 相邻 spec，不能存入普通应用配置"))
 	}
 	if value.SensitiveCredentials.StoredInAppConfig {
 		issues = append(issues, sensitiveValueIssue("privacy.sensitiveCredentials.storedInAppConfig"))
