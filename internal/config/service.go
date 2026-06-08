@@ -181,7 +181,7 @@ func validateServiceCandidate(loader ConfigLoader, config UserConfig) []ConfigIs
 	validationLoader := normalizeLoader(ConfigLoader{
 		Store:     fixedConfigStore{config: config, state: FileStatePresent},
 		Resolver:  loader.Resolver,
-		EnvReader: mapEnvReader(nil),
+		EnvReader: emptyEnvReader,
 		PathInput: pathInput,
 	})
 	_, err := validationLoader.Load()
@@ -197,6 +197,10 @@ func validateServiceCandidate(loader ConfigLoader, config UserConfig) []ConfigIs
 		Severity: ConfigIssueSeverityError,
 		Message:  "配置校验失败",
 	}}
+}
+
+func emptyEnvReader(name string) (string, bool) {
+	return "", false
 }
 
 func writeFailureError(err error) ConfigError {

@@ -283,6 +283,37 @@ func TestConfigServiceInvalidUpdateReturnsIssueAndDoesNotWriteFile(t *testing.T)
 	}
 }
 
+func TestConfigServiceCandidateValidationIgnoresEnvironmentOverrides(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config-root", "LoomiDBX", "config.json")
+	writeRawFile(t, configPath, `{
+		"version": 1,
+		"appearance": {"language": "zh", "theme": "system"}
+	}`)
+	service := newTestConfigService(root, JSONConfigFileStore{}, map[string]string{
+		EnvTheme: string(ThemeDark),
+	})
+	invalidTheme := Theme("blue")
+
+	_, issues, err := service.Update(UpdateSettingsInput{
+		Appearance: &UpdateAppearanceInput{
+			Theme: &invalidTheme,
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("Update() error = %v, want nil validation result", err)
+	}
+	assertIssue(t, issues, "appearance.theme", ConfigIssueCodeValidationFailed)
+	raw, readErr := os.ReadFile(configPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile() error = %v", readErr)
+	}
+	if strings.Contains(string(raw), "blue") {
+		t.Fatalf("invalid theme was persisted despite validation issues: %s", string(raw))
+	}
+}
+
 func TestConfigServiceSaveFailureReturnsReason(t *testing.T) {
 	root := t.TempDir()
 	store := failingSaveStore{
