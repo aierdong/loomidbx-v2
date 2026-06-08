@@ -1,74 +1,74 @@
 # Implementation Plan
 
-- [ ] 1. 建立 DBX 核心接口基础
-- [ ] 1.1 创建数据库类型、连接配置和 adapter 入口契约
+- [x] 1. 建立 DBX 核心接口基础
+- [x] 1.1 创建数据库类型、连接配置和 adapter 入口契约
   - 定义数据库类型标识、adapter metadata、连接配置和连接测试结果，让后续服务层可以通过统一入口访问数据库能力。
   - 保持连接配置只作为调用边界，不写入本地存储、不输出敏感字段。
   - 完成后，Go 包可编译，测试可以构造一个 adapter 并读取类型、显示名称、能力和子接口。
   - _Requirements: 1.1, 1.2, 1.3, 7.1_
   - _Boundary: CoreAdapter_
-- [ ] 1.2 定义 DBX typed errors
+- [x] 1.2 定义 DBX typed errors
   - 定义 unsupported database、invalid adapter、duplicate adapter、unsupported dialect operation、introspection/type mapping failure 等错误分类。
   - 错误信息包含非敏感上下文，并避免输出密码、敏感 DSN 片段或 SQL 参数值。
   - 完成后，单元测试可以用 errors 匹配具体错误类别，而不是依赖字符串判断。
   - _Requirements: 1.4, 5.4, 7.1_
   - _Boundary: DBXErrors_
-- [ ] 1.3 实现内存 adapter registry
+- [x] 1.3 实现内存 adapter registry
   - 支持注册、查找和列出 adapter，并对 nil adapter、空数据库类型、重复注册和缺失 adapter 返回 deterministic 结果。
   - registry 实例保持测试隔离，不依赖全局可变状态作为唯一入口。
   - 完成后，registry 单元测试覆盖成功注册、缺失查找和错误分支。
   - _Requirements: 1.4, 6.2_
   - _Boundary: AdapterRegistry_
 
-- [ ] 2. 定义能力模型和 canonical schema
-- [ ] 2.1 (P) 建立数据库能力模型
+- [x] 2. 定义能力模型和 canonical schema
+- [x] 2.1 (P) 建立数据库能力模型
   - 覆盖事务、保存点、外键、延迟约束、批量插入、bulk load、RETURNING、upsert、catalog/schema、JSON、array、UUID、enum、generated/identity column 和 identifier length 等能力字段。
   - 提供 MySQL/PostgreSQL 优先验证的示例能力说明，但不注册真实生产 adapter。
   - 完成后，测试或示例可以基于 capabilities 选择策略，而无需判断数据库类型。
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
   - _Boundary: Capabilities_
-- [ ] 2.2 (P) 建立逻辑类型和值对象
+- [x] 2.2 (P) 建立逻辑类型和值对象
   - 定义逻辑类型 kind、长度、精度、小数位、bit width、timezone、元素类型、枚举值和 native type 保留字段。
   - 未知类型必须能被表达，并保留原始 native type。
   - 完成后，逻辑类型测试可以覆盖基础类型、数组/枚举扩展字段和 unknown fallback。
   - _Requirements: 4.1, 4.2_
   - _Boundary: SchemaModel_
-- [ ] 2.3 (P) 建立 canonical schema 结构
+- [x] 2.3 (P) 建立 canonical schema 结构
   - 定义 database、namespace、table、view、column、primary key、foreign key、unique constraint、check constraint 和 index 等结构。
   - Column 和约束结构保留 NativeType、LogicalType、默认值、nullable、ordinal、生成/identity 标记、comment 和 Raw metadata。
   - 完成后，测试可以构造包含表、字段、外键和 Raw metadata 的 deterministic schema。
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: SchemaModel_
 
-- [ ] 3. 定义类型映射、扫描和 SQL 方言契约
-- [ ] 3.1 (P) 实现 TypeMapper 接口边界
+- [x] 3. 定义类型映射、扫描和 SQL 方言契约
+- [x] 3.1 (P) 实现 TypeMapper 接口边界
   - 定义 native type、mapping options 和 mapper contract，支持 unknown 或配置化 fallback。
   - Mapper 不打开数据库连接，也不读取 schema 扫描上下文之外的外部状态。
   - 完成后，fake mapper 测试可独立验证 native type 到 logical type 的转换。
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
   - _Boundary: TypeMapper_
-- [ ] 3.2 (P) 实现 Introspector 接口边界
+- [x] 3.2 (P) 实现 Introspector 接口边界
   - 定义 introspection options 和扫描 contract，输出 canonical schema 或 typed error。
   - 扫描边界允许接收连接抽象或 fake connection，但不实现真实 metadata SQL。
   - 完成后，fake introspector 可以返回包含 Raw metadata 的稳定 schema。
   - _Requirements: 3.1, 3.2, 3.3, 4.4_
   - _Boundary: Introspector_
-- [ ] 3.3 (P) 实现 Dialect 接口边界
+- [x] 3.3 (P) 实现 Dialect 接口边界
   - 定义 identifier quoting、placeholder、batch insert request 和 statement 结果 contract。
   - BuildInsert 只返回 SQL 文本和 args，不执行 SQL、不管理事务、不持久化写入结果。
   - 完成后，fake dialect 测试覆盖 quoting、placeholder、insert statement 和 unsupported operation error。
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
   - _Boundary: Dialect_
 
-- [ ] 4. 提供 fake 测试替身
-- [ ] 4.1 实现 fake adapter 组合
+- [x] 4. 提供 fake 测试替身
+- [x] 4.1 实现 fake adapter 组合
   - fake adapter 可配置 capabilities、connection test result、dialect、introspector、type mapper 和错误分支。
   - fake adapter 记录关键调用，便于后续服务层测试断言调用路径。
   - 完成后，测试可以通过 registry 获取 fake adapter 并完成能力查询、连接测试和子接口访问。
   - _Depends: 1.1, 1.2, 1.3, 2.1, 3.1, 3.2, 3.3_
   - _Requirements: 6.1, 6.2, 6.4, 7.1, 7.2_
   - _Boundary: Fakes_
-- [ ] 4.2 实现 fake introspector、fake mapper 和 fake dialect
+- [x] 4.2 实现 fake introspector、fake mapper 和 fake dialect
   - fake introspector 返回 deterministic schema；fake mapper 返回配置化 logical type；fake dialect 返回固定 statement 或 typed failure。
   - 所有 fake 都不打开网络连接、不要求真实凭据、不伪装为生产数据库支持。
   - 完成后，fake 组合测试能验证重复运行得到相同 schema 和 statement。
@@ -76,27 +76,27 @@
   - _Requirements: 6.1, 6.3, 6.4, 7.1, 7.2_
   - _Boundary: Fakes_
 
-- [ ] 5. 更新 DBX 文档和范围声明
-- [ ] 5.1 更新 DBX 根目录与子目录 README
+- [x] 5. 更新 DBX 文档和范围声明
+- [x] 5.1 更新 DBX 根目录与子目录 README
   - 说明当前已交付接口、值对象、registry 和 fake，不包含真实 MySQL/PostgreSQL 或其他数据库实现。
   - 明确 Adapter、Dialect、Introspector、TypeMapper、Capabilities、SchemaModel 和 Fakes 的职责边界。
   - 完成后，开发者能从 README 判断新增真实 adapter、schema API、writer 或 UI 应进入后续 spec。
   - _Requirements: 2.4, 3.4, 5.5, 7.2, 7.3, 7.4_
   - _Boundary: DBXDocs_
-- [ ] 5.2 记录能力协商和隐私约束
+- [x] 5.2 记录能力协商和隐私约束
   - 文档强调业务层应基于 capabilities 决策，不在主路径按数据库类型硬编码分支。
   - 文档声明连接配置、Raw metadata、用户 SQL 和真实凭据不得在本 feature 的测试或日志中泄露。
   - 完成后，DBX 文档能清楚区分 fake/test-only、接口可用和真实数据库支持未完成。
   - _Requirements: 2.2, 2.3, 7.1, 7.2, 7.4_
   - _Boundary: DBXDocs_
 
-- [ ] 6. 验证接口契约和边界约束
-- [ ] 6.1 运行 DBX 单元测试
+- [x] 6. 验证接口契约和边界约束
+- [x] 6.1 运行 DBX 单元测试
   - 覆盖 registry、typed errors、capabilities、schema raw metadata、type mapper、dialect 和 fake 组合行为。
   - 测试不依赖真实数据库、网络连接、真实凭据、Wails runtime 或前端工程。
   - 完成后，`go test` 中 DBX 相关测试通过，或失败信息能定位到具体接口契约。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 3.1, 4.1, 5.1, 6.1, 6.2, 6.3, 6.4, 7.1_
-- [ ] 6.2 验证依赖方向和非目标未越界
+- [x] 6.2 验证依赖方向和非目标未越界
   - 检查 schema 不依赖 adapter/dialect/introspect/typex，DBX 不引入真实数据库驱动或第三方 SQL builder。
   - 确认没有新增 Wails binding、UI 页面、真实 writer、执行引擎或数据库特定生产 adapter。
   - 完成后，结构检查和代码搜索证明本 spec 只拥有 `internal/dbx/` 接口边界及 fake 测试替身。
