@@ -57,10 +57,10 @@ func TestConfigFileStoreReadValidUserConfig(t *testing.T) {
 	if cfg.Paths == nil || cfg.Paths.DataDir != "E:/loomidbx/data" {
 		t.Fatalf("Paths = %+v, want dataDir", cfg.Paths)
 	}
-	if cfg.Development == nil || cfg.Development.Mode != ModeDevelopment || !cfg.Development.UseIsolatedDataDir || !cfg.Development.DiagnosticsEnabled {
+	if cfg.Development == nil || cfg.Development.Mode != ModeDevelopment || cfg.Development.UseIsolatedDataDir == nil || !*cfg.Development.UseIsolatedDataDir || cfg.Development.DiagnosticsEnabled == nil || !*cfg.Development.DiagnosticsEnabled {
 		t.Fatalf("Development = %+v, want development flags", cfg.Development)
 	}
-	if cfg.Privacy == nil || !cfg.Privacy.LocalOnly || cfg.Privacy.TelemetryEnabled {
+	if cfg.Privacy == nil || cfg.Privacy.LocalOnly == nil || !*cfg.Privacy.LocalOnly || cfg.Privacy.TelemetryEnabled == nil || *cfg.Privacy.TelemetryEnabled {
 		t.Fatalf("Privacy = %+v, want local only without telemetry", cfg.Privacy)
 	}
 }
@@ -221,8 +221,8 @@ func sampleUserConfig() UserConfig {
 		},
 		Development: &UserDevelopmentConfig{
 			Mode:               ModeDevelopment,
-			UseIsolatedDataDir: true,
-			DiagnosticsEnabled: true,
+			UseIsolatedDataDir: boolPtr(true),
+			DiagnosticsEnabled: boolPtr(true),
 		},
 		Integrations: &FutureIntegrationsConfig{
 			Account: FutureIntegrationConfig{
@@ -237,8 +237,8 @@ func sampleUserConfig() UserConfig {
 			},
 		},
 		Privacy: &UserPrivacyConfig{
-			LocalOnly:        true,
-			TelemetryEnabled: false,
+			LocalOnly:        boolPtr(true),
+			TelemetryEnabled: boolPtr(false),
 		},
 	}
 }

@@ -181,7 +181,7 @@ func (overrides EnvOverrides) ApplyToUserConfig(cfg UserConfig) UserConfig {
 			cfg.Development.Mode = *overrides.Development.Mode
 		}
 		if overrides.Development.DiagnosticsEnabled != nil {
-			cfg.Development.DiagnosticsEnabled = *overrides.Development.DiagnosticsEnabled
+			cfg.Development.DiagnosticsEnabled = boolPtr(*overrides.Development.DiagnosticsEnabled)
 		}
 	}
 

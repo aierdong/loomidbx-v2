@@ -53,15 +53,19 @@ func DefaultUserConfig() UserConfig {
 		},
 		Development: &UserDevelopmentConfig{
 			Mode:               cfg.Development.Mode,
-			UseIsolatedDataDir: cfg.Development.UseIsolatedDataDir,
-			DiagnosticsEnabled: cfg.Development.DiagnosticsEnabled,
+			UseIsolatedDataDir: boolPtr(cfg.Development.UseIsolatedDataDir),
+			DiagnosticsEnabled: boolPtr(cfg.Development.DiagnosticsEnabled),
 		},
 		Integrations: &cfg.Integrations,
 		Privacy: &UserPrivacyConfig{
-			LocalOnly:        cfg.Privacy.LocalOnly,
-			TelemetryEnabled: cfg.Privacy.TelemetryEnabled,
+			LocalOnly:        boolPtr(cfg.Privacy.LocalOnly),
+			TelemetryEnabled: boolPtr(cfg.Privacy.TelemetryEnabled),
 		},
 	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func defaultFutureIntegration() FutureIntegrationConfig {

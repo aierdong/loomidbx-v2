@@ -192,7 +192,7 @@ func TestEnvOverridesCanApplyOverFileConfigWithoutWriteBack(t *testing.T) {
 		},
 		Development: &UserDevelopmentConfig{
 			Mode:               ModeDesktop,
-			DiagnosticsEnabled: false,
+			DiagnosticsEnabled: boolPtr(false),
 		},
 	}
 	overrides := EnvOverrides{
@@ -219,7 +219,7 @@ func TestEnvOverridesCanApplyOverFileConfigWithoutWriteBack(t *testing.T) {
 	if applied.Paths == nil || applied.Paths.DataDir != dataDir {
 		t.Fatalf("Paths after apply = %+v, want dataDir %q", applied.Paths, dataDir)
 	}
-	if applied.Development == nil || applied.Development.Mode != ModeDevelopment || !applied.Development.DiagnosticsEnabled {
+	if applied.Development == nil || applied.Development.Mode != ModeDevelopment || applied.Development.DiagnosticsEnabled == nil || !*applied.Development.DiagnosticsEnabled {
 		t.Fatalf("Development after apply = %+v, want env values", applied.Development)
 	}
 	if overrides.WriteBack {
@@ -231,7 +231,7 @@ func TestEnvOverridesCanApplyOverFileConfigWithoutWriteBack(t *testing.T) {
 	if fileConfig.Paths == nil || fileConfig.Paths.DataDir == dataDir {
 		t.Fatalf("source Paths was mutated = %+v", fileConfig.Paths)
 	}
-	if fileConfig.Development == nil || fileConfig.Development.Mode != ModeDesktop || fileConfig.Development.DiagnosticsEnabled {
+	if fileConfig.Development == nil || fileConfig.Development.Mode != ModeDesktop || fileConfig.Development.DiagnosticsEnabled == nil || *fileConfig.Development.DiagnosticsEnabled {
 		t.Fatalf("source Development was mutated = %+v", fileConfig.Development)
 	}
 }

@@ -281,15 +281,23 @@ func mergeUserConfig(cfg AppConfig, user UserConfig) AppConfig {
 		if user.Development.Mode != "" {
 			cfg.Development.Mode = user.Development.Mode
 		}
-		cfg.Development.UseIsolatedDataDir = user.Development.UseIsolatedDataDir
-		cfg.Development.DiagnosticsEnabled = user.Development.DiagnosticsEnabled
+		if user.Development.UseIsolatedDataDir != nil {
+			cfg.Development.UseIsolatedDataDir = *user.Development.UseIsolatedDataDir
+		}
+		if user.Development.DiagnosticsEnabled != nil {
+			cfg.Development.DiagnosticsEnabled = *user.Development.DiagnosticsEnabled
+		}
 	}
 	if user.Integrations != nil {
 		cfg.Integrations = mergeFutureIntegrations(cfg.Integrations, *user.Integrations)
 	}
 	if user.Privacy != nil {
-		cfg.Privacy.LocalOnly = user.Privacy.LocalOnly
-		cfg.Privacy.TelemetryEnabled = user.Privacy.TelemetryEnabled
+		if user.Privacy.LocalOnly != nil {
+			cfg.Privacy.LocalOnly = *user.Privacy.LocalOnly
+		}
+		if user.Privacy.TelemetryEnabled != nil {
+			cfg.Privacy.TelemetryEnabled = *user.Privacy.TelemetryEnabled
+		}
 	}
 	return cfg
 }

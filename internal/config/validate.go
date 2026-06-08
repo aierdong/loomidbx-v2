@@ -36,8 +36,12 @@ func (ConfigValidator) ValidateAppConfig(cfg AppConfig) []ConfigIssue {
 func (validator ConfigValidator) ValidateUserConfig(cfg UserConfig) []ConfigIssue {
 	var issues []ConfigIssue
 	if cfg.Appearance != nil {
-		issues = append(issues, validateLanguage(cfg.Appearance.Language)...)
-		issues = append(issues, validateTheme(cfg.Appearance.Theme)...)
+		if cfg.Appearance.Language != "" {
+			issues = append(issues, validateLanguage(cfg.Appearance.Language)...)
+		}
+		if cfg.Appearance.Theme != "" {
+			issues = append(issues, validateTheme(cfg.Appearance.Theme)...)
+		}
 	}
 	if cfg.Paths != nil && cfg.Paths.DataDir != "" {
 		issues = append(issues, validateAbsolutePath("paths.dataDir", cfg.Paths.DataDir)...)

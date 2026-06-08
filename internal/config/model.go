@@ -101,12 +101,15 @@ type UserPathConfig struct {
 }
 
 type UserDevelopmentConfig struct {
-	Mode               RunMode `json:"mode,omitempty"`
-	UseIsolatedDataDir bool    `json:"useIsolatedDataDir,omitempty"`
-	DiagnosticsEnabled bool    `json:"diagnosticsEnabled,omitempty"`
+	Mode RunMode `json:"mode,omitempty"`
+
+	UseIsolatedDataDir *bool `json:"useIsolatedDataDir,omitempty"`
+
+	DiagnosticsEnabled *bool `json:"diagnosticsEnabled,omitempty"`
 }
 
 type UserPrivacyConfig struct {
-	LocalOnly        bool `json:"localOnly"`
-	TelemetryEnabled bool `json:"telemetryEnabled"`
+	LocalOnly *bool `json:"localOnly,omitempty"`
+
+	TelemetryEnabled *bool `json:"telemetryEnabled,omitempty"`
 }
