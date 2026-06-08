@@ -132,6 +132,23 @@ func TestConfigFileStoreSaveOmitsResolvedConfigFileAndEnvOnlySources(t *testing.
 	}
 }
 
+func TestConfigFileStoreSaveRejectsInvalidUserConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	invalid := sampleUserConfig()
+	invalid.Appearance.Theme = Theme("blue")
+
+	err := (JSONConfigFileStore{}).Save(path, invalid)
+
+	configErr, ok := err.(ConfigError)
+	if !ok {
+		t.Fatalf("Save() error = %T %[1]v, want ConfigError", err)
+	}
+	assertIssue(t, configErr.Issues, "appearance.theme", ConfigIssueCodeValidationFailed)
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("config file exists after rejected save: %v", statErr)
+	}
+}
+
 func TestConfigFileStoreSaveFailureDoesNotLeaveInvalidTargetFile(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "config.json")

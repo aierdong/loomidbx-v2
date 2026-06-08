@@ -180,6 +180,23 @@ func TestConfigLoaderEnvironmentOverridesAreNotWrittenBack(t *testing.T) {
 	}
 }
 
+func TestConfigLoaderRejectsInvalidMergedConfigBeforeUse(t *testing.T) {
+	root := t.TempDir()
+	writeRawFile(t, filepath.Join(root, "config-root", "LoomiDBX", "config.json"), `{
+		"version": 1,
+		"appearance": {"language": "zh", "theme": "blue"}
+	}`)
+	loader := newTestConfigLoader(t, root, nil)
+
+	_, err := loader.Load()
+
+	configErr, ok := err.(ConfigError)
+	if !ok {
+		t.Fatalf("Load() error = %T %[1]v, want ConfigError", err)
+	}
+	assertIssue(t, configErr.Issues, "appearance.theme", ConfigIssueCodeValidationFailed)
+}
+
 func TestConfigLoaderMissingFileDoesNotFailStartup(t *testing.T) {
 	root := t.TempDir()
 	loader := newTestConfigLoader(t, root, nil)

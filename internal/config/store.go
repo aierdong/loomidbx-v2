@@ -68,6 +68,14 @@ func (JSONConfigFileStore) Read(path string) (UserConfig, FileState, error) {
 // The persisted shape is UserConfig only, so resolved config-file paths, environment override sources,
 // and other non-persistent loader state are not written into the ordinary config file.
 func (store JSONConfigFileStore) Save(path string, config UserConfig) error {
+	if issues := (ConfigValidator{}).ValidateForSave(config); len(issues) != 0 {
+		return ConfigError{
+			Code:    primaryIssueCode(issues),
+			Message: "配置校验失败",
+			Issues:  issues,
+		}
+	}
+
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return fmt.Errorf("create config parent directory: %w", err)

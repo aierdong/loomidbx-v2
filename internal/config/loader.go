@@ -149,6 +149,13 @@ func (loader ConfigLoader) Load() (LoadResult, error) {
 	cfg.Paths.ConfigFile = finalResolved.ConfigFile
 	cfg.Paths.DataDir = finalResolved.DataDir
 	cfg.Development.UseIsolatedDataDir = finalResolved.Isolated
+	if validationIssues := (ConfigValidator{}).ValidateForLoad(cfg); len(validationIssues) != 0 {
+		return LoadResult{Source: sourceFromEnv(env)}, ConfigError{
+			Code:    primaryIssueCode(validationIssues),
+			Message: "配置校验失败",
+			Issues:  validationIssues,
+		}
+	}
 
 	return LoadResult{
 		Config: cfg,
