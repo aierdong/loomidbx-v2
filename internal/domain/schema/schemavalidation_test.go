@@ -2,6 +2,9 @@ package schema
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -441,6 +444,147 @@ func TestInMemoryUniquenessSemanticsDoNotRequireDatabaseAccess(t *testing.T) {
 	assertAllIssuesSafeErrors(t, append(catalogIssues, schemaIssues...))
 }
 
+func TestValidateSchemaDraftAndPersistedUseDifferentIDAndAuditTimeRules(t *testing.T) {
+	schema := DbSchema{CatalogID: 22, SchemaName: "public"}
+	if issues := ValidateSchema(schema, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateSchema(draft) = %#v, want no issues for zero primary key and audit times", issues)
+	}
+
+	persistedIssues := ValidateSchema(schema, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "createdAt", "updatedAt"})
+	assertIssueCodes(t, persistedIssues, map[string]SchemaIssueCode{
+		"id":        SchemaIssueCodeInvalidID,
+		"createdAt": SchemaIssueCodeInvalidTime,
+		"updatedAt": SchemaIssueCodeInvalidTime,
+	})
+
+	negativeID := schema
+	negativeID.ID = -1
+	assertIssuePaths(t, ValidateSchema(negativeID, SchemaValidationModeDraft), []string{"id"})
+}
+
+func TestValidateCatalogDraftAllowsPartialAuditTimesButPersistedRequiresBoth(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+
+	catalog := DbCatalog{ConnectionID: 42, CatalogName: "analytics", CreatedAt: createdAt}
+	if issues := ValidateCatalog(catalog, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateCatalog(draft with only createdAt) = %#v, want no issues", issues)
+	}
+
+	persistedIssues := ValidateCatalog(catalog, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "updatedAt"})
+	assertIssueCodes(t, persistedIssues, map[string]SchemaIssueCode{
+		"id":        SchemaIssueCodeInvalidID,
+		"updatedAt": SchemaIssueCodeInvalidTime,
+	})
+}
+
+func TestValidateSchemaReturnsMultipleFieldLevelIssuesWithJSONPaths(t *testing.T) {
+	zeroScanTime := time.Time{}
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+
+	issues := ValidateSchema(DbSchema{
+		ID:         -7,
+		CatalogID:  0,
+		SchemaName: "bad/schema",
+		ScannedAt:  &zeroScanTime,
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"id", "catalogId", "schemaName", "scannedAt", "updatedAt"})
+	assertIssueCodes(t, issues, map[string]SchemaIssueCode{
+		"id":         SchemaIssueCodeInvalidID,
+		"catalogId":  SchemaIssueCodeInvalidID,
+		"schemaName": SchemaIssueCodeInvalidName,
+		"scannedAt":  SchemaIssueCodeInvalidTime,
+		"updatedAt":  SchemaIssueCodeInvalidTime,
+	})
+	assertAllIssuesSafeErrors(t, issues)
+}
+
+func TestUpstreamReferencesRemainScalarIDsAndDoNotPullConnectionDomainTypes(t *testing.T) {
+	catalogType := reflect.TypeOf(DbCatalog{})
+	assertFieldType(t, catalogType, "ConnectionID", reflect.TypeOf(int64(0)))
+
+	schemaType := reflect.TypeOf(DbSchema{})
+	assertFieldType(t, schemaType, "CatalogID", reflect.TypeOf(int64(0)))
+
+	identityType := reflect.TypeOf(SchemaIdentity{})
+	assertFieldType(t, identityType, "ConnectionID", reflect.TypeOf(int64(0)))
+	assertFieldType(t, identityType, "CatalogName", reflect.TypeOf(""))
+	assertFieldType(t, identityType, "SchemaName", reflect.TypeOf(""))
+}
+
+func TestSchemaDomainModelsDoNotExposeOutOfScopeServiceAPIUIOrExecutionFields(t *testing.T) {
+	for _, typ := range []reflect.Type{reflect.TypeOf(DbCatalog{}), reflect.TypeOf(DbSchema{}), reflect.TypeOf(SchemaIdentity{})} {
+		for index := range typ.NumField() {
+			field := typ.Field(index)
+			fieldName := strings.ToLower(field.Name)
+			jsonName := strings.ToLower(strings.Split(field.Tag.Get("json"), ",")[0])
+
+			for _, forbidden := range []string{"service", "api", "ui", "wails", "vue", "execution", "engine", "driver", "sql"} {
+				if strings.Contains(fieldName, forbidden) || strings.Contains(jsonName, forbidden) {
+					t.Fatalf("%s.%s exposes out-of-scope field matching %q with json tag %q", typ.Name(), field.Name, forbidden, field.Tag.Get("json"))
+				}
+			}
+		}
+	}
+}
+
+func TestSchemaDomainProductionFilesDoNotImportOutOfScopePackages(t *testing.T) {
+	for _, file := range schemaProductionFiles(t) {
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse imports for %s: %v", file, err)
+		}
+
+		for _, importSpec := range parsed.Imports {
+			importPath := strings.Trim(importSpec.Path.Value, "\"")
+			for _, forbidden := range []string{
+				"github.com/gerdong/loomidbx/internal/config",
+				"github.com/gerdong/loomidbx/internal/domain/connection",
+				"github.com/gerdong/loomidbx/internal/service",
+				"github.com/gerdong/loomidbx/internal/repository",
+				"github.com/gerdong/loomidbx/internal/storage",
+				"github.com/gerdong/loomidbx/internal/dbx",
+				"github.com/wailsapp/wails",
+				"database/sql",
+			} {
+				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
+					t.Fatalf("schema domain file %s imports out-of-scope package %q", file, importPath)
+				}
+			}
+		}
+	}
+}
+
+func TestSchemaDomainDoesNotDeclareOutOfScopeServiceAPIUIOrExecutionTypes(t *testing.T) {
+	for _, file := range schemaProductionFiles(t) {
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+		if err != nil {
+			t.Fatalf("parse declarations for %s: %v", file, err)
+		}
+
+		for _, decl := range parsed.Decls {
+			name := ""
+			switch typed := decl.(type) {
+			case *ast.GenDecl:
+				for _, spec := range typed.Specs {
+					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+						name = typeSpec.Name.Name
+						assertNotOutOfScopeDeclarationName(t, file, name)
+					}
+				}
+			case *ast.FuncDecl:
+				name = typed.Name.Name
+				assertNotOutOfScopeDeclarationName(t, file, name)
+			}
+		}
+	}
+}
+
 func assertAllIssuesSafeErrors(t *testing.T, issues []SchemaValidationIssue) {
 	t.Helper()
 
@@ -470,21 +614,70 @@ func assertIssuePaths(t *testing.T, issues []SchemaValidationIssue, expected []s
 }
 
 func TestSchemaDomainDoesNotImportInternalConfig(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join(".", "*.go"))
-	if err != nil {
-		t.Fatalf("glob schema package files: %v", err)
-	}
-	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-
+	for _, file := range schemaProductionFiles(t) {
 		content, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("read schema package file %s: %v", file, err)
 		}
 		if strings.Contains(string(content), "internal/config") {
 			t.Fatalf("schema domain file %s must not directly import internal/config", file)
+		}
+	}
+}
+
+func schemaProductionFiles(t *testing.T) []string {
+	t.Helper()
+
+	files, err := filepath.Glob(filepath.Join(".", "*.go"))
+	if err != nil {
+		t.Fatalf("glob schema package files: %v", err)
+	}
+
+	productionFiles := make([]string, 0, len(files))
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		productionFiles = append(productionFiles, file)
+	}
+	return productionFiles
+}
+
+func assertFieldType(t *testing.T, typ reflect.Type, fieldName string, expected reflect.Type) {
+	t.Helper()
+
+	field, ok := typ.FieldByName(fieldName)
+	if !ok {
+		t.Fatalf("%s missing field %s", typ.Name(), fieldName)
+	}
+	if field.Type != expected {
+		t.Fatalf("%s.%s type = %s, want %s", typ.Name(), fieldName, field.Type, expected)
+	}
+}
+
+func assertIssueCodes(t *testing.T, issues []SchemaValidationIssue, expected map[string]SchemaIssueCode) {
+	t.Helper()
+
+	if len(issues) != len(expected) {
+		t.Fatalf("issue count = %d, want %d in %#v", len(issues), len(expected), issues)
+	}
+	for _, issue := range issues {
+		code, ok := expected[issue.Path]
+		if !ok {
+			t.Fatalf("unexpected issue path %q in %#v", issue.Path, issues)
+		}
+		if issue.Code != code {
+			t.Fatalf("issue code for path %q = %q, want %q in %#v", issue.Path, issue.Code, code, issues)
+		}
+	}
+}
+
+func assertNotOutOfScopeDeclarationName(t *testing.T, file string, name string) {
+	t.Helper()
+
+	for _, forbidden := range []string{"Service", "API", "UI", "Wails", "Vue", "Execution", "Engine", "Driver"} {
+		if strings.Contains(name, forbidden) {
+			t.Fatalf("schema domain file %s declares out-of-scope name %q matching %q", file, name, forbidden)
 		}
 	}
 }
