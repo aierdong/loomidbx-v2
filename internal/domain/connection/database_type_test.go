@@ -100,6 +100,58 @@ func TestDatabaseTypeUnknownIsExplicitlyRecognized(t *testing.T) {
 	}
 }
 
+func TestDatabaseTypePrimarySupportExpressesFirstPhasePriority(t *testing.T) {
+	tests := []struct {
+		name     string
+		dbType   DatabaseType
+		expected bool
+	}{
+		{name: "mysql", dbType: DatabaseTypeMySQL, expected: true},
+		{name: "postgres", dbType: DatabaseTypePostgreSQL, expected: true},
+		{name: "sqlite", dbType: DatabaseTypeSQLite, expected: false},
+		{name: "oracle", dbType: DatabaseTypeOracle, expected: false},
+		{name: "sqlserver", dbType: DatabaseTypeSQLServer, expected: false},
+		{name: "clickhouse", dbType: DatabaseTypeClickHouse, expected: false},
+		{name: "tidb", dbType: DatabaseTypeTiDB, expected: false},
+		{name: "hive", dbType: DatabaseTypeHive, expected: false},
+		{name: "unknown", dbType: DatabaseType("mariadb"), expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.dbType.IsPrimarySupported(); got != tt.expected {
+				t.Fatalf("IsPrimarySupported() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDatabaseTypeRequiresNetworkAddressDistinguishesSQLiteAndUnknown(t *testing.T) {
+	tests := []struct {
+		name     string
+		dbType   DatabaseType
+		expected bool
+	}{
+		{name: "mysql", dbType: DatabaseTypeMySQL, expected: true},
+		{name: "postgres", dbType: DatabaseTypePostgreSQL, expected: true},
+		{name: "oracle", dbType: DatabaseTypeOracle, expected: true},
+		{name: "sqlserver", dbType: DatabaseTypeSQLServer, expected: true},
+		{name: "clickhouse", dbType: DatabaseTypeClickHouse, expected: true},
+		{name: "tidb", dbType: DatabaseTypeTiDB, expected: true},
+		{name: "hive", dbType: DatabaseTypeHive, expected: true},
+		{name: "sqlite", dbType: DatabaseTypeSQLite, expected: false},
+		{name: "unknown", dbType: DatabaseType("mariadb"), expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.dbType.RequiresNetworkAddress(); got != tt.expected {
+				t.Fatalf("RequiresNetworkAddress() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestDatabaseTypeBelongsToConnectionDomain(t *testing.T) {
 	got := reflect.TypeOf(DatabaseTypeMySQL).PkgPath()
 	want := "github.com/gerdong/loomidbx/internal/domain/connection"

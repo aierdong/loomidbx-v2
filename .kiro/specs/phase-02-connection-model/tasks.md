@@ -18,7 +18,7 @@
   - _Boundary: DatabaseType_
   - _Depends: 1.1_
 
-- [ ] 2.2 表达首期优先支持与网络地址需求 (P)
+- [x] 2.2 表达首期优先支持与网络地址需求 (P)
   - 增加 `IsPrimarySupported` 或等价方法表达 MySQL/PostgreSQL 的首期优先验证目标。
   - 增加 `RequiresNetworkAddress` 或等价方法区分 SQLite 与网络数据库的主机校验需求。
   - 不在本任务中扩展 `internal/dbx/core.DBType` 到 8 种业务类型；如需要映射辅助函数，只允许把 MySQL/PostgreSQL 映射到现有 `core.DBType`，其余类型返回明确不支持结果。

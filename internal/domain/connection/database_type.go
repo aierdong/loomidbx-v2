@@ -57,6 +57,35 @@ func (t DatabaseType) IsUnknown() bool {
 	return !t.IsKnown()
 }
 
+// IsPrimarySupported reports whether the database type is a first-phase priority validation target.
+// It only expresses the current priority boundary and does not guarantee that real connectivity is available.
+func (t DatabaseType) IsPrimarySupported() bool {
+	switch t {
+	case DatabaseTypeMySQL,
+		DatabaseTypePostgreSQL:
+		return true
+	default:
+		return false
+	}
+}
+
+// RequiresNetworkAddress reports whether the known database type needs host validation for network access.
+// Unknown values return false so callers can report an unknown type instead of misleading host errors.
+func (t DatabaseType) RequiresNetworkAddress() bool {
+	switch t {
+	case DatabaseTypeMySQL,
+		DatabaseTypePostgreSQL,
+		DatabaseTypeOracle,
+		DatabaseTypeSQLServer,
+		DatabaseTypeClickHouse,
+		DatabaseTypeTiDB,
+		DatabaseTypeHive:
+		return true
+	default:
+		return false
+	}
+}
+
 // String returns the stable string representation used for persistence and transport.
 // Unknown values are returned unchanged so callers can detect and report them explicitly.
 func (t DatabaseType) String() string {
