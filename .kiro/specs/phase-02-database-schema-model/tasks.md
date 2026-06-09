@@ -38,7 +38,7 @@
   - _Boundary: Validation_
   - _Depends: 2.1, 2.2_
 
-- [ ] 3.2 实现模型校验规则
+- [x] 3.2 实现模型校验规则
   - 覆盖必填字段、父级引用、枚举合法性、时间字段和唯一性语义表达。
   - 提供明确校验入口，至少覆盖 `SchemaValidationModeDraft` 与 `SchemaValidationModePersisted`，避免单一含糊 `Validate()` 混淆新建对象和持久化快照。
   - `DbSchema.SchemaName == ""` 必须作为隐式 Schema 合法表达，不得当作缺失字段处理。

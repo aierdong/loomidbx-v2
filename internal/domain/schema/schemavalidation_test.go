@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSchemaIssueCodeStableStringValuesAndRecognition(t *testing.T) {
@@ -342,6 +343,117 @@ func TestValidateIssueRequiresJSONFieldPathSemantics(t *testing.T) {
 			})
 			assertIssuePaths(t, issues, []string{"path"})
 		})
+	}
+}
+
+func TestValidateCatalogDraftAndPersistedUseDifferentIDAndAuditTimeRules(t *testing.T) {
+	catalog := DbCatalog{ConnectionID: 42, CatalogName: "analytics"}
+	if issues := ValidateCatalog(catalog, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateCatalog(draft) = %#v, want no issues for zero primary key and audit times", issues)
+	}
+
+	persistedIssues := ValidateCatalog(catalog, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "createdAt", "updatedAt"})
+
+	negativeID := catalog
+	negativeID.ID = -1
+	assertIssuePaths(t, ValidateCatalog(negativeID, SchemaValidationModeDraft), []string{"id"})
+}
+
+func TestValidateCatalogReturnsMultipleFieldLevelIssues(t *testing.T) {
+	zeroScanTime := time.Time{}
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+
+	issues := ValidateCatalog(DbCatalog{
+		ID:           -7,
+		ConnectionID: 0,
+		CatalogName:  "bad/catalog",
+		ScannedAt:    &zeroScanTime,
+		CreatedAt:    createdAt,
+		UpdatedAt:    updatedAt,
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"id", "connectionId", "catalogName", "scannedAt", "updatedAt"})
+	assertAllIssuesSafeErrors(t, issues)
+}
+
+func TestValidateSchemaAllowsImplicitSchemaNameInBothModes(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	implicitSchema := DbSchema{ID: 9, CatalogID: 22, SchemaName: "", CreatedAt: createdAt, UpdatedAt: createdAt}
+
+	if issues := ValidateSchema(implicitSchema, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateSchema(draft implicit schema) = %#v, want no issues", issues)
+	}
+	if issues := ValidateSchema(implicitSchema, SchemaValidationModePersisted); len(issues) != 0 {
+		t.Fatalf("ValidateSchema(persisted implicit schema) = %#v, want no issues", issues)
+	}
+}
+
+func TestValidateSchemaRejectsInvalidParentNameAndAuditTimes(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+
+	issues := ValidateSchema(DbSchema{
+		CatalogID:  0,
+		SchemaName: "  ",
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"catalogId", "schemaName", "updatedAt"})
+	assertAllIssuesSafeErrors(t, issues)
+}
+
+func TestValidateIdentityAllowsImplicitSchemaAndRejectsInvalidParts(t *testing.T) {
+	implicitIdentity := SchemaIdentity{ConnectionID: 42, CatalogName: "analytics", SchemaName: ""}
+	if issues := ValidateIdentity(implicitIdentity); len(issues) != 0 {
+		t.Fatalf("ValidateIdentity(implicit schema) = %#v, want no issues", issues)
+	}
+
+	issues := ValidateIdentity(SchemaIdentity{ConnectionID: 0, CatalogName: " ", SchemaName: "bad/schema"})
+	assertIssuePaths(t, issues, []string{"connectionId", "catalogName", "schemaName"})
+	assertAllIssuesSafeErrors(t, issues)
+}
+
+func TestValidationEntryPointsRejectUnknownMode(t *testing.T) {
+	catalogIssues := ValidateCatalog(DbCatalog{ConnectionID: 1, CatalogName: "analytics"}, SchemaValidationMode("runtime"))
+	assertIssuePaths(t, catalogIssues, []string{"mode"})
+
+	schemaIssues := ValidateSchema(DbSchema{CatalogID: 1, SchemaName: "public"}, SchemaValidationMode("runtime"))
+	assertIssuePaths(t, schemaIssues, []string{"mode"})
+}
+
+func TestInMemoryUniquenessSemanticsDoNotRequireDatabaseAccess(t *testing.T) {
+	catalogIssues := ValidateCatalogUniqueness([]DbCatalog{
+		{ConnectionID: 1, CatalogName: "analytics"},
+		{ConnectionID: 2, CatalogName: "analytics"},
+		{ConnectionID: 1, CatalogName: "analytics"},
+	})
+	assertIssuePaths(t, catalogIssues, []string{"catalogName"})
+
+	schemaIssues := ValidateSchemaUniqueness([]DbSchema{
+		{CatalogID: 10, SchemaName: ""},
+		{CatalogID: 11, SchemaName: ""},
+		{CatalogID: 10, SchemaName: ""},
+	})
+	assertIssuePaths(t, schemaIssues, []string{"schemaName"})
+	assertAllIssuesSafeErrors(t, append(catalogIssues, schemaIssues...))
+}
+
+func assertAllIssuesSafeErrors(t *testing.T, issues []SchemaValidationIssue) {
+	t.Helper()
+
+	if len(issues) == 0 {
+		t.Fatalf("expected at least one issue")
+	}
+	for _, issue := range issues {
+		if issue.Severity != SchemaIssueSeverityError {
+			t.Fatalf("issue severity = %q, want error: %#v", issue.Severity, issue)
+		}
+		if strings.TrimSpace(issue.Message) == "" {
+			t.Fatalf("issue message should be non-empty and safe: %#v", issue)
+		}
 	}
 }
 
