@@ -19,7 +19,7 @@
   - _Boundary: DomainModels_
   - _Depends: 1.1_
 
-- [ ] 2.2 实现枚举、状态和值对象 (P)
+- [x] 2.2 实现枚举、状态和值对象 (P)
   - 实现 `SchemaIssueCode`、`SchemaIssueSeverity`、`SchemaValidationMode` 和 `SchemaValidationIssue`，字段形状必须兼容现有 `ConfigIssue` / `ApiIssue` 的 `path`、`code`、`severity`、`message` 合同。
   - 枚举使用 `design.md` 中定义的稳定字符串值，并能识别未知值。
   - 明确 schema domain 不直接依赖 `internal/config` 包。
