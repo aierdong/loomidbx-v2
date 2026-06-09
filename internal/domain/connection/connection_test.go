@@ -247,3 +247,50 @@ func TestConnectionValidateRequiresHostForNetworkDatabases(t *testing.T) {
 		t.Fatalf("Validate() errors = %#v, want %#v", result.Errors, expected)
 	}
 }
+
+func TestConnectionUnknownJSONFieldsDoNotBreakKnownFieldRecovery(t *testing.T) {
+	payload := []byte(`{"id":"conn-compat","name":"Compatible","type":"mysql","host":"db.internal","future_field":{"nested":true}}`)
+
+	var decoded Connection
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("Unmarshal(Connection) with unknown fields returned error: %v", err)
+	}
+
+	if decoded.ID != ConnectionID("conn-compat") {
+		t.Fatalf("decoded ID = %q, want conn-compat", decoded.ID)
+	}
+	if decoded.Name != "Compatible" {
+		t.Fatalf("decoded Name = %q, want Compatible", decoded.Name)
+	}
+	if decoded.Type != DatabaseTypeMySQL {
+		t.Fatalf("decoded Type = %q, want %q", decoded.Type, DatabaseTypeMySQL)
+	}
+	if decoded.Host != "db.internal" {
+		t.Fatalf("decoded Host = %q, want db.internal", decoded.Host)
+	}
+}
+
+func TestConnectionValidationErrorsExcludeSensitiveParamValues(t *testing.T) {
+	conn := Connection{
+		Name: "Sensitive Params",
+		Type: DatabaseTypeMySQL,
+		Host: "db.internal",
+		Params: ConnectionParams{
+			"password":     "do-not-report-password",
+			"access_token": "do-not-report-token",
+		},
+	}
+
+	result := conn.Validate()
+
+	if len(result.Errors) == 0 {
+		t.Fatalf("Validate() should report sensitive parameter key errors")
+	}
+	for _, validationError := range result.Errors {
+		for _, leaked := range []string{"do-not-report-password", "do-not-report-token"} {
+			if strings.Contains(validationError.Message, leaked) {
+				t.Fatalf("validation error leaked sensitive parameter value %q: %#v", leaked, validationError)
+			}
+		}
+	}
+}
