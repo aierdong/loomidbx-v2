@@ -105,6 +105,80 @@ func TestConnectionIDRemainsStableIdentityWhenNameChanges(t *testing.T) {
 	}
 }
 
+func TestConnectionMissingOptionalFieldsUseSafeZeroValues(t *testing.T) {
+	var decoded Connection
+	if err := json.Unmarshal([]byte(`{"id":"conn-minimal","name":"Minimal","type":"sqlite"}`), &decoded); err != nil {
+		t.Fatalf("Unmarshal minimal Connection returned error: %v", err)
+	}
+
+	if decoded.ID != ConnectionID("conn-minimal") {
+		t.Fatalf("decoded ID = %q, want conn-minimal", decoded.ID)
+	}
+	if decoded.Name != "Minimal" {
+		t.Fatalf("decoded Name = %q, want Minimal", decoded.Name)
+	}
+	if decoded.Type != DatabaseTypeSQLite {
+		t.Fatalf("decoded Type = %q, want %q", decoded.Type, DatabaseTypeSQLite)
+	}
+	if decoded.Host != "" {
+		t.Fatalf("missing host should decode to empty string, got %q", decoded.Host)
+	}
+	if decoded.Port != 0 {
+		t.Fatalf("missing port should decode to zero, got %d", decoded.Port)
+	}
+	if decoded.Database != "" {
+		t.Fatalf("missing database should decode to empty string, got %q", decoded.Database)
+	}
+	if decoded.Username != "" {
+		t.Fatalf("missing username should decode to empty string, got %q", decoded.Username)
+	}
+	if !reflect.DeepEqual(decoded.Credential, CredentialRef{}) {
+		t.Fatalf("missing credential should decode to zero reference, got %#v", decoded.Credential)
+	}
+	if decoded.Params != nil {
+		t.Fatalf("missing params should decode to nil map, got %#v", decoded.Params)
+	}
+}
+
+func TestConnectionNormalizeTrimsUserProvidedFields(t *testing.T) {
+	conn := Connection{
+		ID:       ConnectionID("conn-normalize"),
+		Name:     "  Reporting Primary  ",
+		Type:     DatabaseTypePostgreSQL,
+		Host:     "  db.internal  ",
+		Database: "  analytics  ",
+		Username: "  reporter  ",
+		Params: ConnectionParams{
+			" sslmode ": " require ",
+			"timeout":   float64(30),
+		},
+	}
+
+	conn.Normalize()
+
+	if conn.Name != "Reporting Primary" {
+		t.Fatalf("normalized Name = %q, want Reporting Primary", conn.Name)
+	}
+	if conn.Host != "db.internal" {
+		t.Fatalf("normalized Host = %q, want db.internal", conn.Host)
+	}
+	if conn.Database != "analytics" {
+		t.Fatalf("normalized Database = %q, want analytics", conn.Database)
+	}
+	if conn.Username != "reporter" {
+		t.Fatalf("normalized Username = %q, want reporter", conn.Username)
+	}
+	if _, ok := conn.Params[" sslmode "]; ok {
+		t.Fatalf("normalization should trim parameter keys: %#v", conn.Params)
+	}
+	if got := conn.Params["sslmode"]; got != " require " {
+		t.Fatalf("normalized param value = %#v, want original value", got)
+	}
+	if got := conn.Params["timeout"]; got != float64(30) {
+		t.Fatalf("normalized timeout = %#v, want 30", got)
+	}
+}
+
 func TestConnectionDoesNotExposePlaintextSecretFields(t *testing.T) {
 	connectionType := reflect.TypeOf(Connection{})
 	for i := range connectionType.NumField() {

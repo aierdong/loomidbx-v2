@@ -1,5 +1,7 @@
 package connection
 
+import "strings"
+
 // ConnectionID is the stable identity used to reference a saved connection.
 type ConnectionID string
 
@@ -31,4 +33,22 @@ type Connection struct {
 
 	// Params stores non-core extension parameters without interpreting them as driver behavior.
 	Params ConnectionParams `json:"params,omitempty"`
+}
+
+// Normalize trims user-provided connection fields and parameter keys in place.
+func (c *Connection) Normalize() {
+	c.Name = strings.TrimSpace(c.Name)
+	c.Host = strings.TrimSpace(c.Host)
+	c.Database = strings.TrimSpace(c.Database)
+	c.Username = strings.TrimSpace(c.Username)
+
+	if c.Params == nil {
+		return
+	}
+
+	normalized := make(ConnectionParams, len(c.Params))
+	for key, value := range c.Params {
+		normalized[strings.TrimSpace(key)] = value
+	}
+	c.Params = normalized
 }
