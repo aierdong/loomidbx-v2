@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. 建立连接领域包基础结构
-- [ ] 1.1 创建 `internal/domain/connection` 包和核心文件 (P)
+- [x] 1.1 创建 `internal/domain/connection` 包和核心文件 (P)
   - 新增 `connection.go`、`database_type.go`、`credential.go`、`params.go`、`validation.go` 的包声明和最小类型骨架。
   - 为所有导出类型、字段、常量和枚举值添加符合项目规则的 Go 注释。
   - 完成后，包可以被 `go test` 编译，不依赖 Wails、Vue 或数据库驱动。
