@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/gerdong/loomidbx/internal/dbx/core"
 )
 
 func TestDatabaseTypeKnownStableStringValues(t *testing.T) {
@@ -157,5 +159,27 @@ func TestDatabaseTypeBelongsToConnectionDomain(t *testing.T) {
 	want := "github.com/gerdong/loomidbx/internal/domain/connection"
 	if got != want {
 		t.Fatalf("DatabaseType package path = %q, want %q to keep it distinct from adapter DBType", got, want)
+	}
+}
+
+func TestDatabaseTypeReservedTypesAreNotCurrentAdapterCapabilities(t *testing.T) {
+	adapterCapabilities := map[string]bool{
+		string(core.DBTypeMySQL):    true,
+		string(core.DBTypePostgres): true,
+	}
+
+	reservedTypes := []DatabaseType{
+		DatabaseTypeSQLite,
+		DatabaseTypeOracle,
+		DatabaseTypeSQLServer,
+		DatabaseTypeClickHouse,
+		DatabaseTypeTiDB,
+		DatabaseTypeHive,
+	}
+
+	for _, dbType := range reservedTypes {
+		if adapterCapabilities[dbType.String()] {
+			t.Fatalf("reserved database type %q should not be treated as a current adapter capability", dbType)
+		}
 	}
 }
