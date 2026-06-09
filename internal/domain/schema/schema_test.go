@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSchemaDomainScaffoldExportsStableShapes(t *testing.T) {
@@ -178,6 +179,227 @@ func TestCoreSchemaModelsExposeOnlyStableDesignFields(t *testing.T) {
 	assertStructJSONFieldSet(t, reflect.TypeOf(DbCatalog{}), []string{"id", "connectionId", "catalogName", "scannedAt", "createdAt", "updatedAt"})
 	assertStructJSONFieldSet(t, reflect.TypeOf(DbSchema{}), []string{"id", "catalogId", "schemaName", "scannedAt", "createdAt", "updatedAt"})
 	assertStructJSONFieldSet(t, reflect.TypeOf(SchemaIdentity{}), []string{"connectionId", "catalogName", "schemaName"})
+}
+
+func TestSchemaSerializationRoundTripPreservesCatalogSchemaIdentityAndIssueContracts(t *testing.T) {
+	scannedAt := time.Date(2026, 6, 10, 9, 30, 0, 0, time.UTC)
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 10, 11, 0, 0, 0, time.UTC)
+
+	catalog := DbCatalog{
+		ID:           101,
+		ConnectionID: 202,
+		CatalogName:  "analytics",
+		ScannedAt:    &scannedAt,
+		CreatedAt:    createdAt,
+		UpdatedAt:    updatedAt,
+	}
+	assertJSONRoundTrip(t, "DbCatalog", catalog)
+
+	schema := DbSchema{
+		ID:         303,
+		CatalogID:  101,
+		SchemaName: "public",
+		ScannedAt:  &scannedAt,
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+	}
+	assertJSONRoundTrip(t, "DbSchema", schema)
+
+	identity := SchemaIdentity{ConnectionID: 202, CatalogName: "analytics", SchemaName: "public"}
+	assertJSONRoundTrip(t, "SchemaIdentity", identity)
+
+	issue := SchemaValidationIssue{
+		Path:     "identity.schemaName",
+		Code:     SchemaIssueCodeRequired,
+		Severity: SchemaIssueSeverityError,
+		Message:  "schemaName is required",
+	}
+	assertJSONRoundTrip(t, "SchemaValidationIssue", issue)
+}
+
+func TestSchemaJSONMissingOptionalFieldsDecodeToCompatibleZeroValues(t *testing.T) {
+	var catalog DbCatalog
+	if err := json.Unmarshal([]byte(`{"id":1,"connectionId":2,"catalogName":"analytics"}`), &catalog); err != nil {
+		t.Fatalf("Unmarshal minimal DbCatalog returned error: %v", err)
+	}
+	if catalog.ID != 1 || catalog.ConnectionID != 2 || catalog.CatalogName != "analytics" {
+		t.Fatalf("decoded minimal catalog = %#v, want stable required fields", catalog)
+	}
+	if catalog.ScannedAt != nil {
+		t.Fatalf("missing scannedAt should decode to nil, got %#v", catalog.ScannedAt)
+	}
+	if !catalog.CreatedAt.IsZero() || !catalog.UpdatedAt.IsZero() {
+		t.Fatalf("missing audit times should decode to zero values, got createdAt=%v updatedAt=%v", catalog.CreatedAt, catalog.UpdatedAt)
+	}
+
+	var schema DbSchema
+	if err := json.Unmarshal([]byte(`{"id":3,"catalogId":1,"schemaName":""}`), &schema); err != nil {
+		t.Fatalf("Unmarshal minimal implicit DbSchema returned error: %v", err)
+	}
+	if schema.ID != 3 || schema.CatalogID != 1 || schema.SchemaName != "" {
+		t.Fatalf("decoded minimal schema = %#v, want stable identity fields with implicit schema", schema)
+	}
+	if schema.ScannedAt != nil {
+		t.Fatalf("missing schema scannedAt should decode to nil, got %#v", schema.ScannedAt)
+	}
+	if !schema.CreatedAt.IsZero() || !schema.UpdatedAt.IsZero() {
+		t.Fatalf("missing schema audit times should decode to zero values, got createdAt=%v updatedAt=%v", schema.CreatedAt, schema.UpdatedAt)
+	}
+}
+
+func TestSchemaUnmarshalSchemaNameErrorsUseFieldLevelIssueShape(t *testing.T) {
+	tests := []struct {
+		name    string
+		decode  func() error
+		path    string
+		message string
+	}{
+		{
+			name: "DbSchema missing schemaName",
+			decode: func() error {
+				var decoded DbSchema
+				return json.Unmarshal([]byte(`{"id":1,"catalogId":2}`), &decoded)
+			},
+			path:    "schemaName",
+			message: "schemaName is required and must be a string; use an empty string for an implicit schema",
+		},
+		{
+			name: "DbSchema null schemaName",
+			decode: func() error {
+				var decoded DbSchema
+				return json.Unmarshal([]byte(`{"id":1,"catalogId":2,"schemaName":null}`), &decoded)
+			},
+			path:    "schemaName",
+			message: "schemaName is required and must be a string; use an empty string for an implicit schema",
+		},
+		{
+			name: "SchemaIdentity missing schemaName",
+			decode: func() error {
+				var decoded SchemaIdentity
+				return json.Unmarshal([]byte(`{"connectionId":1,"catalogName":"analytics"}`), &decoded)
+			},
+			path:    "schemaName",
+			message: "schemaName is required and must be a string; use an empty string for an implicit schema",
+		},
+		{
+			name: "SchemaIdentity null schemaName",
+			decode: func() error {
+				var decoded SchemaIdentity
+				return json.Unmarshal([]byte(`{"connectionId":1,"catalogName":"analytics","schemaName":null}`), &decoded)
+			},
+			path:    "schemaName",
+			message: "schemaName is required and must be a string; use an empty string for an implicit schema",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.decode()
+			if err == nil {
+				t.Fatalf("Unmarshal should reject %s", tt.name)
+			}
+
+			var schemaErr SchemaJSONError
+			if !errors.As(err, &schemaErr) {
+				t.Fatalf("error type = %T, want SchemaJSONError", err)
+			}
+			issues := schemaErr.Issues()
+			if got, want := len(issues), 1; got != want {
+				t.Fatalf("SchemaJSONError issues = %#v, want exactly %d", issues, want)
+			}
+			expected := SchemaValidationIssue{Path: tt.path, Code: SchemaIssueCodeRequired, Severity: SchemaIssueSeverityError, Message: tt.message}
+			if !reflect.DeepEqual(issues[0], expected) {
+				t.Fatalf("SchemaJSONError issue = %#v, want %#v", issues[0], expected)
+			}
+
+			encoded, err := json.Marshal(issues[0])
+			if err != nil {
+				t.Fatalf("Marshal SchemaJSONError issue returned error: %v", err)
+			}
+			const expectedFields = 4
+			var fieldShape map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fieldShape); err != nil {
+				t.Fatalf("Unmarshal encoded issue shape returned error: %v", err)
+			}
+			if got := len(fieldShape); got != expectedFields {
+				t.Fatalf("issue JSON field count = %d, want %d: %s", got, expectedFields, encoded)
+			}
+			assertJSONFieldsPresent(t, fieldShape, "path", "code", "severity", "message")
+		})
+	}
+}
+
+func TestSchemaEnumSerializationRejectsNonStringJSONValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		decode func() error
+	}{
+		{
+			name: "issue code object",
+			decode: func() error {
+				var decoded SchemaIssueCode
+				return json.Unmarshal([]byte(`{"code":"SCHEMA_REQUIRED"}`), &decoded)
+			},
+		},
+		{
+			name: "severity number",
+			decode: func() error {
+				var decoded SchemaIssueSeverity
+				return json.Unmarshal([]byte(`1`), &decoded)
+			},
+		},
+		{
+			name: "validation mode boolean",
+			decode: func() error {
+				var decoded SchemaValidationMode
+				return json.Unmarshal([]byte(`true`), &decoded)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.decode(); err == nil {
+				t.Fatalf("enum unmarshal should reject non-string JSON for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestSchemaNamePresentAsNullNeverDecodesToImplicitSchema(t *testing.T) {
+	var decodedSchema DbSchema
+	if err := json.Unmarshal([]byte(`{"id":1,"catalogId":2,"schemaName":null}`), &decodedSchema); err == nil {
+		t.Fatalf("DbSchema null schemaName should return a field-level error, not decode to implicit schema: %#v", decodedSchema)
+	}
+	if decodedSchema.SchemaName == "" && decodedSchema.CatalogID == 2 {
+		t.Fatalf("DbSchema null schemaName partially decoded as implicit schema: %#v", decodedSchema)
+	}
+
+	var decodedIdentity SchemaIdentity
+	if err := json.Unmarshal([]byte(`{"connectionId":1,"catalogName":"analytics","schemaName":null}`), &decodedIdentity); err == nil {
+		t.Fatalf("SchemaIdentity null schemaName should return a field-level error, not decode to implicit schema: %#v", decodedIdentity)
+	}
+	if decodedIdentity.SchemaName == "" && decodedIdentity.ConnectionID == 1 {
+		t.Fatalf("SchemaIdentity null schemaName partially decoded as implicit schema: %#v", decodedIdentity)
+	}
+}
+
+func assertJSONRoundTrip[T any](t *testing.T, name string, original T) {
+	t.Helper()
+
+	encoded, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal(%s) returned error: %v", name, err)
+	}
+
+	var decoded T
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(%s) returned error: %v", name, err)
+	}
+	if !reflect.DeepEqual(decoded, original) {
+		t.Fatalf("%s round trip = %#v, want %#v", name, decoded, original)
+	}
 }
 
 func assertJSONTags(t *testing.T, typ reflect.Type, expected map[string]string) {
