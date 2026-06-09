@@ -1,6 +1,9 @@
 package schema
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // DbSchema represents a schema level under a catalog, including the empty-string implicit schema form.
 type DbSchema struct {
@@ -21,4 +24,18 @@ type DbSchema struct {
 
 	// UpdatedAt stores the latest update audit time for persisted schema snapshots.
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// UnmarshalJSON decodes a schema while requiring schemaName to be present and non-null.
+func (s *DbSchema) UnmarshalJSON(data []byte) error {
+	if err := requireSchemaNameJSON(data, "schemaName"); err != nil {
+		return err
+	}
+	type dbSchemaAlias DbSchema
+	var decoded dbSchemaAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*s = DbSchema(decoded)
+	return nil
 }

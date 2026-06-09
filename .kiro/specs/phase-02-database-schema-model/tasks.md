@@ -9,7 +9,7 @@
   - _Boundary: DomainScaffold_
 
 - [ ] 2. 实现核心模型与枚举
-- [ ] 2.1 实现核心实体和值对象
+- [x] 2.1 实现核心实体和值对象
   - 实现 `DbCatalog`、`DbSchema` 的稳定身份、父级引用、时间字段和 JSON 标签，字段合同必须与 `design.md` 的 Data Models 表一致。
   - 实现 `SchemaIdentity`，确保 `schemaName` 在 JSON 中始终存在，且空字符串稳定表示隐式 Schema。
   - 为 `DbSchema` 和 `SchemaIdentity` 实现自定义 JSON 反序列化或等价解码逻辑，必须区分 `schemaName` 缺失、`null` 和 `""`。
