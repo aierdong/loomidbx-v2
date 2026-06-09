@@ -45,7 +45,7 @@
   - _Depends: 3.1_
 
 - [ ] 4. 实现敏感凭据与扩展参数边界
-- [ ] 4.1 定义 `CredentialRef` 敏感凭据引用 (P)
+- [x] 4.1 定义 `CredentialRef` 敏感凭据引用 (P)
   - 定义凭据引用 ID、凭据类型、`Provider`、`Key` 和可选元数据字段，不包含明文密码或令牌字段。
   - 确保 `Provider` / `Key` 可无损映射到 `internal/storage.SecretRef`；业务 ID、类型和元数据不得替代 provider/key 语义。
   - 确保 JSON 输出只包含引用信息，不输出秘密值。
