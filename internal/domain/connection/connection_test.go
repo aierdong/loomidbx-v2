@@ -192,3 +192,58 @@ func TestConnectionDoesNotExposePlaintextSecretFields(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionValidateAcceptsMinimalSQLiteConnection(t *testing.T) {
+	conn := Connection{Name: "Local", Type: DatabaseTypeSQLite}
+
+	result := conn.Validate()
+
+	if len(result.Errors) != 0 {
+		t.Fatalf("Validate() errors = %#v, want none", result.Errors)
+	}
+}
+
+func TestConnectionValidateReportsAllBasicErrors(t *testing.T) {
+	conn := Connection{
+		Name: "  ",
+		Type: DatabaseType("mariadb"),
+		Port: 70000,
+		Params: ConnectionParams{
+			" ":         "blank key",
+			"password":  "do-not-log",
+			"api_token": "do-not-log-either",
+		},
+	}
+
+	result := conn.Validate()
+
+	expected := []ValidationError{
+		{Field: "name", Code: ValidationCodeRequired, Message: "connection name is required"},
+		{Field: "type", Code: ValidationCodeUnknownDatabaseType, Message: "database type is not recognized"},
+		{Field: "port", Code: ValidationCodeInvalidPort, Message: "port must be between 1 and 65535"},
+		{Field: "params", Code: ValidationCodeRequired, Message: "parameter key is required"},
+		{Field: "params.api_token", Code: ValidationCodeSensitiveParamNotAllowed, Message: "sensitive parameter must use credential reference"},
+		{Field: "params.password", Code: ValidationCodeSensitiveParamNotAllowed, Message: "sensitive parameter must use credential reference"},
+	}
+	if !reflect.DeepEqual(result.Errors, expected) {
+		t.Fatalf("Validate() errors = %#v, want %#v", result.Errors, expected)
+	}
+	for _, validationError := range result.Errors {
+		for _, leaked := range []string{"do-not-log", "do-not-log-either"} {
+			if strings.Contains(validationError.Message, leaked) {
+				t.Fatalf("validation error leaked sensitive value in message: %#v", validationError)
+			}
+		}
+	}
+}
+
+func TestConnectionValidateRequiresHostForNetworkDatabases(t *testing.T) {
+	conn := Connection{Name: "Reporting", Type: DatabaseTypePostgreSQL}
+
+	result := conn.Validate()
+
+	expected := []ValidationError{{Field: "host", Code: ValidationCodeRequired, Message: "host is required for network database types"}}
+	if !reflect.DeepEqual(result.Errors, expected) {
+		t.Fatalf("Validate() errors = %#v, want %#v", result.Errors, expected)
+	}
+}

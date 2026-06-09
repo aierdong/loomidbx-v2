@@ -79,7 +79,7 @@
   - _Boundary: Validation_
   - _Depends: 3.1_
 
-- [ ] 5.2 实现 `Connection.Validate` 基础规则
+- [x] 5.2 实现 `Connection.Validate` 基础规则
   - 校验连接名称、数据库类型、主机、端口和扩展参数键。
   - 同一次校验返回所有可检测问题，不只返回第一个错误。
   - 完成后，无效连接能产生字段级错误集合，且错误中不包含敏感值。

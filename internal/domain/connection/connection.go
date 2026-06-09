@@ -1,6 +1,9 @@
 package connection
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // ConnectionID is the stable identity used to reference a saved connection.
 type ConnectionID string
@@ -51,4 +54,41 @@ func (c *Connection) Normalize() {
 		normalized[strings.TrimSpace(key)] = value
 	}
 	c.Params = normalized
+}
+
+// Validate returns all detectable field-level validation errors for the connection.
+func (c Connection) Validate() ValidationResult {
+	result := ValidationResult{}
+
+	if strings.TrimSpace(c.Name) == "" {
+		result.Errors = append(result.Errors, ValidationError{Field: "name", Code: ValidationCodeRequired, Message: "connection name is required"})
+	}
+	if !c.Type.IsKnown() {
+		result.Errors = append(result.Errors, ValidationError{Field: "type", Code: ValidationCodeUnknownDatabaseType, Message: "database type is not recognized"})
+	}
+	if c.Type.RequiresNetworkAddress() && strings.TrimSpace(c.Host) == "" {
+		result.Errors = append(result.Errors, ValidationError{Field: "host", Code: ValidationCodeRequired, Message: "host is required for network database types"})
+	}
+	if c.Port < 0 || c.Port > 65535 {
+		result.Errors = append(result.Errors, ValidationError{Field: "port", Code: ValidationCodeInvalidPort, Message: "port must be between 1 and 65535"})
+	}
+
+	keys := make([]string, 0, len(c.Params))
+	for key := range c.Params {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			result.Errors = append(result.Errors, ValidationError{Field: "params", Code: ValidationCodeRequired, Message: "parameter key is required"})
+			continue
+		}
+		if IsSensitiveParamKey(key) {
+			result.Errors = append(result.Errors, ValidationError{Field: "params." + trimmedKey, Code: ValidationCodeSensitiveParamNotAllowed, Message: "sensitive parameter must use credential reference"})
+		}
+	}
+
+	return result
 }
