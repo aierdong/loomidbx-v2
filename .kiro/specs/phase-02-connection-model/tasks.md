@@ -112,10 +112,11 @@
   - _Boundary: SerializationTests_
   - _Depends: 4.3, 5.2_
 
-- [ ] 7. 运行领域模型验证
+- [x] 7. 运行领域模型验证
   - 执行连接领域包相关 `go test`，优先限定到 `internal/domain/connection` 或等价包路径。
   - 如项目已有格式化或 lint 命令，运行与本包相关的最小验证命令。
   - 完成后，记录通过的验证命令和任何非本规格导致的剩余问题。
+  - 已通过验证命令：`go test ./internal/domain/connection`、`go test ./...`；剩余问题：无。
   - _Requirements: 6.5_
   - _Boundary: ValidationRun_
   - _Depends: 6.1, 6.2, 6.3_
