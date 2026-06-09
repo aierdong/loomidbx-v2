@@ -1,6 +1,9 @@
 package schema
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // SchemaIssueCode identifies a stable machine-readable issue category for schema domain validation.
 type SchemaIssueCode string
@@ -188,4 +191,66 @@ type SchemaValidationIssue struct {
 
 	// Message is a safe user-readable explanation that must not contain credentials, user SQL, or generated data.
 	Message string `json:"message"`
+}
+
+// ValidateIssue validates that a reusable schema validation issue follows the stable field-level contract.
+func ValidateIssue(issue SchemaValidationIssue) []SchemaValidationIssue {
+	issues := make([]SchemaValidationIssue, 0, 4)
+	if !isSchemaJSONPath(issue.Path) {
+		issues = append(issues, validationIssueContractProblem("path", "path must be a non-empty lower camelCase JSON field path"))
+	}
+	if issue.Code.IsUnknown() {
+		issues = append(issues, validationIssueContractProblem("code", "code must be a known schema issue code"))
+	}
+	if issue.Severity.IsUnknown() {
+		issues = append(issues, validationIssueContractProblem("severity", "severity must be one of info, warning, or error"))
+	}
+	if strings.TrimSpace(issue.Message) == "" {
+		issues = append(issues, validationIssueContractProblem("message", "message must be a non-empty safe diagnostic"))
+	}
+	return issues
+}
+
+func validationIssueContractProblem(path string, message string) SchemaValidationIssue {
+	return SchemaValidationIssue{
+		Path:     path,
+		Code:     SchemaIssueCodeValidationFailed,
+		Severity: SchemaIssueSeverityError,
+		Message:  message,
+	}
+}
+
+func isSchemaJSONPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	segments := strings.Split(path, ".")
+	for _, segment := range segments {
+		if !isLowerCamelJSONFieldName(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+func isLowerCamelJSONFieldName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for index, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+			if index == 0 {
+				return false
+			}
+		case r >= '0' && r <= '9':
+			if index == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

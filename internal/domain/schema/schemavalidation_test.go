@@ -288,6 +288,75 @@ func TestSchemaValidationIssueCanCarryUnknownEnumValuesForExplicitValidation(t *
 	}
 }
 
+func TestValidateIssueAcceptsReusableFieldLevelIssueContract(t *testing.T) {
+	issue := SchemaValidationIssue{
+		Path:     "identity.schemaName",
+		Code:     SchemaIssueCodeRequired,
+		Severity: SchemaIssueSeverityError,
+		Message:  "schemaName is required",
+	}
+
+	issues := ValidateIssue(issue)
+	if len(issues) != 0 {
+		t.Fatalf("ValidateIssue(valid issue) = %#v, want no issues", issues)
+	}
+}
+
+func TestValidateIssueReturnsMultipleStructuredProblems(t *testing.T) {
+	issue := SchemaValidationIssue{
+		Path:     "CatalogName",
+		Code:     SchemaIssueCode("SCHEMA_UNKNOWN"),
+		Severity: SchemaIssueSeverity("fatal"),
+		Message:  "   ",
+	}
+
+	issues := ValidateIssue(issue)
+	if got, want := len(issues), 4; got != want {
+		t.Fatalf("ValidateIssue(invalid issue) returned %d issues, want %d: %#v", got, want, issues)
+	}
+
+	assertIssuePaths(t, issues, []string{"path", "code", "severity", "message"})
+	for _, validationIssue := range issues {
+		if validationIssue.Code != SchemaIssueCodeValidationFailed {
+			t.Fatalf("validation issue code = %q, want %q", validationIssue.Code, SchemaIssueCodeValidationFailed)
+		}
+		if validationIssue.Severity != SchemaIssueSeverityError {
+			t.Fatalf("validation issue severity = %q, want %q", validationIssue.Severity, SchemaIssueSeverityError)
+		}
+		if strings.TrimSpace(validationIssue.Message) == "" {
+			t.Fatalf("validation issue should include safe message: %#v", validationIssue)
+		}
+	}
+}
+
+func TestValidateIssueRequiresJSONFieldPathSemantics(t *testing.T) {
+	invalidPaths := []string{"catalog_name", "catalogName.", ".catalogName", "catalogName[0]", "catalogName.SchemaName"}
+
+	for _, path := range invalidPaths {
+		t.Run(path, func(t *testing.T) {
+			issues := ValidateIssue(SchemaValidationIssue{
+				Path:     path,
+				Code:     SchemaIssueCodeRequired,
+				Severity: SchemaIssueSeverityError,
+				Message:  "schema field is required",
+			})
+			assertIssuePaths(t, issues, []string{"path"})
+		})
+	}
+}
+
+func assertIssuePaths(t *testing.T, issues []SchemaValidationIssue, expected []string) {
+	t.Helper()
+
+	actual := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		actual = append(actual, issue.Path)
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("issue paths = %#v, want %#v in %#v", actual, expected, issues)
+	}
+}
+
 func TestSchemaDomainDoesNotImportInternalConfig(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(".", "*.go"))
 	if err != nil {
