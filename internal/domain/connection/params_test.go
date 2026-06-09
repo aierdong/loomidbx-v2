@@ -57,3 +57,41 @@ func TestConnectionParamsPreserveKeysWithoutDriverInterpretation(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionParamKeyIdentifiesSensitiveFragments(t *testing.T) {
+	tests := []struct {
+		key      string
+		expected bool
+	}{
+		{key: "password", expected: true},
+		{key: "dbPassword", expected: true},
+		{key: "access_token", expected: true},
+		{key: "clientSecret", expected: true},
+		{key: "credential_ref", expected: true},
+		{key: " SSLMode ", expected: false},
+		{key: "application_name", expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			if got := IsSensitiveParamKey(tt.key); got != tt.expected {
+				t.Fatalf("IsSensitiveParamKey(%q) = %v, want %v", tt.key, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConnectionParamsSensitiveKeysReturnsOnlySensitiveKeys(t *testing.T) {
+	params := ConnectionParams{
+		"sslmode":        "require",
+		"Password":       "do-not-log-this",
+		"api_token":      "do-not-log-this-either",
+		"connectTimeout": float64(10),
+	}
+
+	sensitiveKeys := params.SensitiveKeys()
+
+	if !reflect.DeepEqual(sensitiveKeys, []string{"Password", "api_token"}) {
+		t.Fatalf("SensitiveKeys() = %#v, want sensitive keys only", sensitiveKeys)
+	}
+}

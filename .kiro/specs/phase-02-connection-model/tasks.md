@@ -62,7 +62,7 @@
   - _Boundary: ConnectionParams_
   - _Depends: 1.1_
 
-- [ ] 4.3 实现敏感参数键识别
+- [x] 4.3 实现敏感参数键识别
   - 实现对 `password`、`token`、`secret`、`credential` 等敏感键片段的大小写不敏感识别。
   - 在参数校验中标记敏感参数，不把敏感值写入错误消息。
   - 完成后，扩展参数中的敏感键可被下游安全存储策略识别。
