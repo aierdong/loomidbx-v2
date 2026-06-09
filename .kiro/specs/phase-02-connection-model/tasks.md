@@ -54,7 +54,7 @@
   - _Boundary: CredentialRef_
   - _Depends: 1.1_
 
-- [ ] 4.2 定义 `ConnectionParams` 扩展参数模型 (P)
+- [x] 4.2 定义 `ConnectionParams` 扩展参数模型 (P)
   - 支持字符串、数字、布尔和 JSON 兼容结构的参数值表达。
   - 保留参数键和值的稳定序列化格式，不在领域层解释为驱动行为。
   - 完成后，普通扩展参数可以 JSON 往返，并保持可校验。
