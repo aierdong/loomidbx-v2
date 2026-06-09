@@ -9,7 +9,7 @@
   - _Boundary: ConnectionDomainScaffold_
 
 - [ ] 2. 实现数据库类型枚举
-- [ ] 2.1 定义 `DatabaseType` 稳定字符串值 (P)
+- [x] 2.1 定义 `DatabaseType` 稳定字符串值 (P)
   - 定义 MySQL、PostgreSQL、SQLite、Oracle、SQL Server、ClickHouse、TiDB、Hive 的枚举常量和 JSON 字符串值。
   - 明确 `DatabaseType` 是连接领域层的业务连接类型，不直接替代 `internal/dbx/core.DBType`。
   - 提供 `IsKnown`、`String` 等基础方法，未知值应被明确识别。
