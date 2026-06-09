@@ -66,10 +66,11 @@
   - _Boundary: ValidationTests_
   - _Depends: 3.2_
 
-- [ ] 5. 运行最小验证
+- [x] 5. 运行最小验证
   - 执行当前领域包相关 `go test`。
   - 如项目已有格式化或 lint 命令，运行与本包相关的最小验证命令。
   - 完成后，记录验证结果和非本规格导致的剩余问题。
+  - 验证结果：`gofmt -w internal/domain/schema/*.go` 完成后无差异；`go test -count=1 ./internal/domain/schema` 通过；`go test ./...` 通过，未发现非本规格导致的剩余问题。
   - _Requirements: 5_
   - _Boundary: ValidationRun_
   - _Depends: 4.1, 4.2_
