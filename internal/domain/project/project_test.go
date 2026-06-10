@@ -373,6 +373,138 @@ func TestProjectTableRelationLoadsUnknownValueSourceWithoutExecutingSQL(t *testi
 	}
 }
 
+func TestProjectValidationIssueCodeAndSeverityContractsAreStable(t *testing.T) {
+	codeTests := []struct {
+		name string
+		code ProjectIssueCode
+		want string
+	}{
+		{name: "validation failed", code: ProjectIssueCodeValidationFailed, want: "VALIDATION_FAILED"},
+		{name: "required", code: ProjectIssueCodeRequired, want: "REQUIRED"},
+		{name: "invalid id", code: ProjectIssueCodeInvalidID, want: "INVALID_ID"},
+		{name: "invalid range", code: ProjectIssueCodeInvalidRange, want: "INVALID_RANGE"},
+		{name: "invalid enum", code: ProjectIssueCodeInvalidEnum, want: "INVALID_ENUM"},
+		{name: "invalid time", code: ProjectIssueCodeInvalidTime, want: "INVALID_TIME"},
+		{name: "duplicate table", code: ProjectIssueCodeDuplicateTable, want: "DUPLICATE_TABLE"},
+		{name: "sql required", code: ProjectIssueCodeSQLRequired, want: "SQL_REQUIRED"},
+		{name: "parent required", code: ProjectIssueCodeParentRequired, want: "PARENT_REQUIRED"},
+		{name: "out of scope", code: ProjectIssueCodeOutOfScope, want: "OUT_OF_SCOPE"},
+	}
+
+	for _, tt := range codeTests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(tt.code); got != tt.want {
+				t.Fatalf("ProjectIssueCode string = %q, want %q", got, tt.want)
+			}
+			if !tt.code.IsKnown() {
+				t.Fatalf("ProjectIssueCode(%q).IsKnown() = false, want true", tt.code)
+			}
+		})
+	}
+	if ProjectIssueCode("FUTURE_CODE").IsKnown() {
+		t.Fatalf("unknown ProjectIssueCode should not be known")
+	}
+
+	severityTests := []struct {
+		severity ProjectIssueSeverity
+		want     string
+	}{
+		{severity: ProjectIssueSeverityInfo, want: "info"},
+		{severity: ProjectIssueSeverityWarning, want: "warning"},
+		{severity: ProjectIssueSeverityError, want: "error"},
+	}
+	for _, tt := range severityTests {
+		if got := string(tt.severity); got != tt.want {
+			t.Fatalf("ProjectIssueSeverity string = %q, want %q", got, tt.want)
+		}
+		if !tt.severity.IsKnown() {
+			t.Fatalf("ProjectIssueSeverity(%q).IsKnown() = false, want true", tt.severity)
+		}
+	}
+	if ProjectIssueSeverity("fatal").IsKnown() {
+		t.Fatalf("unknown ProjectIssueSeverity should not be known")
+	}
+}
+
+func TestProjectValidationIssueJSONShapeAndRoundTrip(t *testing.T) {
+	issue := NewProjectValidationIssue("relations[0].relSourceSql", ProjectIssueCodeSQLRequired)
+
+	encoded, err := json.Marshal(issue)
+	if err != nil {
+		t.Fatalf("Marshal(ProjectValidationIssue) returned error: %v", err)
+	}
+
+	const expected = `{"path":"relations[0].relSourceSql","code":"SQL_REQUIRED","severity":"error","message":"relSourceSql is required for the chosen relation value source"}`
+	if string(encoded) != expected {
+		t.Fatalf("ProjectValidationIssue JSON = %s, want stable lower camelCase shape %s", encoded, expected)
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatalf("Unmarshal encoded ProjectValidationIssue into map returned error: %v", err)
+	}
+	if got, want := len(fields), 4; got != want {
+		t.Fatalf("encoded issue has %d fields, want exactly %d: %v", got, want, fields)
+	}
+	assertProjectJSONFieldsPresent(t, fields, "path", "code", "severity", "message")
+	assertProjectJSONFieldsAbsent(t, fields, "field", "errorCode", "safeMessage", "sql", "relSourceSql")
+
+	var decoded ProjectValidationIssue
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(ProjectValidationIssue) returned error: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, issue) {
+		t.Fatalf("decoded ProjectValidationIssue = %#v, want %#v", decoded, issue)
+	}
+}
+
+func TestProjectValidationIssuesCanReturnMultipleProblemsAtOnce(t *testing.T) {
+	issues := ProjectValidationIssues{
+		NewProjectValidationIssue("project.name", ProjectIssueCodeRequired),
+		NewProjectValidationIssue("tables[0].tableId", ProjectIssueCodeInvalidID),
+		NewProjectValidationIssue("relations[0].relSourceSql", ProjectIssueCodeSQLRequired),
+	}
+
+	encoded, err := json.Marshal(issues)
+	if err != nil {
+		t.Fatalf("Marshal(ProjectValidationIssues) returned error: %v", err)
+	}
+
+	var decoded []ProjectValidationIssue
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(ProjectValidationIssues) returned error: %v", err)
+	}
+	if got, want := len(decoded), 3; got != want {
+		t.Fatalf("decoded issue count = %d, want %d: %s", got, want, encoded)
+	}
+	assertProjectValidationIssuePaths(t, decoded, []string{"project.name", "tables[0].tableId", "relations[0].relSourceSql"})
+	for _, issue := range decoded {
+		if issue.Severity != ProjectIssueSeverityError {
+			t.Fatalf("issue severity = %q, want error: %#v", issue.Severity, issue)
+		}
+		if strings.TrimSpace(issue.Message) == "" {
+			t.Fatalf("issue message should be safe and non-empty: %#v", issue)
+		}
+	}
+}
+
+func TestProjectValidationIssueMessagesDoNotEchoSensitiveSQL(t *testing.T) {
+	sensitiveSQL := "select password, token from customer_secret where api_key = 'secret'"
+	issue := NewProjectValidationIssue("relations[0].relSourceSql", ProjectIssueCodeSQLRequired)
+
+	encoded, err := json.Marshal(issue)
+	if err != nil {
+		t.Fatalf("Marshal(ProjectValidationIssue) returned error: %v", err)
+	}
+	lowerMessage := strings.ToLower(issue.Message)
+	lowerEncoded := strings.ToLower(string(encoded))
+	for _, leaked := range []string{"select", "password", "token", "customer_secret", "api_key", sensitiveSQL} {
+		if strings.Contains(lowerMessage, strings.ToLower(leaked)) || strings.Contains(lowerEncoded, strings.ToLower(leaked)) {
+			t.Fatalf("Project validation issue leaked SQL-sensitive content %q in %s", leaked, encoded)
+		}
+	}
+}
+
 func TestProjectTableRelationExcludesExecutionAlgorithmsAndRuntimeState(t *testing.T) {
 	relationType := reflect.TypeOf(ProjectTableRelation{})
 	for _, forbidden := range []string{
@@ -478,18 +610,36 @@ func TestProjectDomainScaffoldIsDiscoverableAndPure(t *testing.T) {
 
 func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 	allowedExportedTypes := map[string]bool{
-		"Project":              true,
-		"ProjectTable":         true,
-		"ProjectTableRelation": true,
-		"RelationValueSource":  true,
+		"Project":                 true,
+		"ProjectTable":            true,
+		"ProjectTableRelation":    true,
+		"RelationValueSource":     true,
+		"ProjectIssueCode":        true,
+		"ProjectIssueSeverity":    true,
+		"ProjectValidationIssue":  true,
+		"ProjectValidationIssues": true,
 	}
 	allowedExportedValues := map[string]bool{
 		"RelationValueSourceFromExecution": true,
 		"RelationValueSourceFromDBQuery":   true,
 		"RelationValueSourceMerged":        true,
+		"ProjectIssueCodeValidationFailed": true,
+		"ProjectIssueCodeRequired":         true,
+		"ProjectIssueCodeInvalidID":        true,
+		"ProjectIssueCodeInvalidRange":     true,
+		"ProjectIssueCodeInvalidEnum":      true,
+		"ProjectIssueCodeInvalidTime":      true,
+		"ProjectIssueCodeDuplicateTable":   true,
+		"ProjectIssueCodeSQLRequired":      true,
+		"ProjectIssueCodeParentRequired":   true,
+		"ProjectIssueCodeOutOfScope":       true,
+		"ProjectIssueSeverityInfo":         true,
+		"ProjectIssueSeverityWarning":      true,
+		"ProjectIssueSeverityError":        true,
 	}
 	allowedExportedFuncs := map[string]bool{
-		"IsKnown": true,
+		"IsKnown":                   true,
+		"NewProjectValidationIssue": true,
 	}
 
 	files, err := filepath.Glob("*.go")
@@ -574,6 +724,18 @@ func TestProjectDomainScaffoldAvoidsOutOfScopeDependencies(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func assertProjectValidationIssuePaths(t *testing.T, issues []ProjectValidationIssue, expected []string) {
+	t.Helper()
+
+	actual := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		actual = append(actual, issue.Path)
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("issue paths = %#v, want %#v in %#v", actual, expected, issues)
 	}
 }
 
