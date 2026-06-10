@@ -32,6 +32,9 @@ const (
 
 	// SchemaIssueCodeInvalidRange reports an invalid numeric range in a schema domain value object.
 	SchemaIssueCodeInvalidRange SchemaIssueCode = "SCHEMA_INVALID_RANGE"
+
+	// SchemaIssueCodeInvalidMapping reports an invalid schema domain field mapping.
+	SchemaIssueCodeInvalidMapping SchemaIssueCode = "SCHEMA_INVALID_MAPPING"
 )
 
 // IsKnown reports whether the schema issue code belongs to the stable schema domain issue-code set.
@@ -44,7 +47,8 @@ func (c SchemaIssueCode) IsKnown() bool {
 		SchemaIssueCodeInvalidTime,
 		SchemaIssueCodeInvalidIdentity,
 		SchemaIssueCodeInvalidType,
-		SchemaIssueCodeInvalidRange:
+		SchemaIssueCodeInvalidRange,
+		SchemaIssueCodeInvalidMapping:
 		return true
 	default:
 		return false

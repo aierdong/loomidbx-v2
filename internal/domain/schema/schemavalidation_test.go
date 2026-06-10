@@ -25,6 +25,9 @@ func TestSchemaIssueCodeStableStringValuesAndRecognition(t *testing.T) {
 		{name: "invalid name", code: SchemaIssueCodeInvalidName, expected: "SCHEMA_INVALID_NAME"},
 		{name: "invalid time", code: SchemaIssueCodeInvalidTime, expected: "SCHEMA_INVALID_TIME"},
 		{name: "invalid identity", code: SchemaIssueCodeInvalidIdentity, expected: "SCHEMA_INVALID_IDENTITY"},
+		{name: "invalid type", code: SchemaIssueCodeInvalidType, expected: "SCHEMA_INVALID_TYPE"},
+		{name: "invalid range", code: SchemaIssueCodeInvalidRange, expected: "SCHEMA_INVALID_RANGE"},
+		{name: "invalid mapping", code: SchemaIssueCodeInvalidMapping, expected: "SCHEMA_INVALID_MAPPING"},
 	}
 
 	for _, tt := range tests {

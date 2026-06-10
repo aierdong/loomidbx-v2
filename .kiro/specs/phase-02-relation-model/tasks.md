@@ -37,7 +37,7 @@
   - _Depends: 1.1_
 
 - [ ] 3. 实现基础校验
-- [ ] 3.1 复用并扩展字段级校验合同
+- [x] 3.1 复用并扩展字段级校验合同
   - 复用上游 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode`，不得重新定义同名类型。
   - 仅在既有错误码无法表达关系模型问题时，在同一 `SchemaIssueCode` 类型上追加必要常量。
   - 完成后，下游服务和 UI 可以复用结构化错误。
