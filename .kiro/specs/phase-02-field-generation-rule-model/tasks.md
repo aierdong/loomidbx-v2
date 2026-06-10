@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 0. 前置门禁
-- [ ] 0.1 检查上游复用文件存在性
+- [x] 0.1 检查上游复用文件存在性
   - 检查实现本规格需要复用的上游 schema domain 文件是否已经落地，包括 `internal/domain/schema` 中的 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode` 定义文件。
   - 检查上游表字段模型文件是否存在，包括 `DbColumn` 及其 ID 合同相关实现。
   - 若任一必需上游文件或类型不存在，停止本规格后续任务执行，并返回明确阻塞原因；不得在 `internal/domain/rule` 中临时复制或重复声明上游类型。
