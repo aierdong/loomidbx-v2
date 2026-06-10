@@ -131,6 +131,129 @@ func TestDataMappingTypeStableStringValuesRecognitionAndJSON(t *testing.T) {
 	}
 }
 
+func TestConfigStatusStableStringValuesRecognitionAndJSON(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     ConfigStatus
+		jsonValue string
+	}{
+		{name: "active", value: ConfigStatusActive, jsonValue: `"ACTIVE"`},
+		{name: "needs review", value: ConfigStatusNeedsReview, jsonValue: `"NEEDS_REVIEW"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.value.IsKnown() {
+				t.Fatalf("%q should be recognized as known", tt.value)
+			}
+			if tt.value.IsUnknown() {
+				t.Fatalf("%q should not be recognized as unknown", tt.value)
+			}
+			if got := tt.value.String(); got != strings.Trim(tt.jsonValue, `"`) {
+				t.Fatalf("String() = %q, want %s", got, tt.jsonValue)
+			}
+
+			encoded, err := json.Marshal(tt.value)
+			if err != nil {
+				t.Fatalf("Marshal(%v) returned error: %v", tt.value, err)
+			}
+			if string(encoded) != tt.jsonValue {
+				t.Fatalf("Marshal(%v) = %s, want %s", tt.value, encoded, tt.jsonValue)
+			}
+
+			var decoded ConfigStatus
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("Unmarshal(%s) returned error: %v", encoded, err)
+			}
+			if decoded != tt.value {
+				t.Fatalf("decoded ConfigStatus = %q, want %q", decoded, tt.value)
+			}
+		})
+	}
+
+	unknown := ConfigStatus("DISABLED")
+	if unknown.IsKnown() {
+		t.Fatalf("unknown config status %q should not be known", unknown)
+	}
+	if !unknown.IsUnknown() {
+		t.Fatalf("unknown config status %q should be explicitly unknown", unknown)
+	}
+	if got := unknown.String(); got != "DISABLED" {
+		t.Fatalf("unknown config status String() = %q, want unchanged value", got)
+	}
+	encoded, err := json.Marshal(unknown)
+	if err != nil {
+		t.Fatalf("Marshal(unknown ConfigStatus) returned error: %v", err)
+	}
+	if string(encoded) != `"DISABLED"` {
+		t.Fatalf("unknown ConfigStatus JSON = %s, want preserved string", encoded)
+	}
+}
+
+func TestGeneratorParamsJSONSerializationKeepsNullableAndExplicitPayloadsSafe(t *testing.T) {
+	tests := []struct {
+		name   string
+		params GeneratorParams
+		want   string
+	}{
+		{name: "nil raw means no params", params: GeneratorParams{}, want: "null"},
+		{name: "explicit null means no params", params: GeneratorParams{Raw: json.RawMessage("null")}, want: "null"},
+		{name: "empty object is explicit params", params: GeneratorParams{Raw: json.RawMessage(`{}`)}, want: `{}`},
+		{name: "complex payload is preserved", params: GeneratorParams{Raw: json.RawMessage(`{"locale":"zh-CN","nested":{"enabled":true},"items":[1,"a"]}`)}, want: `{"locale":"zh-CN","nested":{"enabled":true},"items":[1,"a"]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := json.Marshal(tt.params)
+			if err != nil {
+				t.Fatalf("Marshal(GeneratorParams) returned error: %v", err)
+			}
+			if string(encoded) != tt.want {
+				t.Fatalf("Marshal(GeneratorParams) = %s, want %s", encoded, tt.want)
+			}
+		})
+	}
+
+	var nullParams GeneratorParams
+	if err := json.Unmarshal([]byte("null"), &nullParams); err != nil {
+		t.Fatalf("Unmarshal(null GeneratorParams) returned error: %v", err)
+	}
+	if len(nullParams.Raw) != 0 {
+		t.Fatalf("null GeneratorParams raw = %q, want empty raw payload", nullParams.Raw)
+	}
+
+	var emptyObjectParams GeneratorParams
+	if err := json.Unmarshal([]byte(`{}`), &emptyObjectParams); err != nil {
+		t.Fatalf("Unmarshal(empty object GeneratorParams) returned error: %v", err)
+	}
+	if string(emptyObjectParams.Raw) != `{}` {
+		t.Fatalf("empty object GeneratorParams raw = %q, want explicit empty object", emptyObjectParams.Raw)
+	}
+
+	config := GeneratorConfig{Params: GeneratorParams{Raw: json.RawMessage(`{"min":1,"max":9}`)}}
+	encodedConfig, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("Marshal(GeneratorConfig with params) returned error: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encodedConfig, &fields); err != nil {
+		t.Fatalf("Unmarshal encoded GeneratorConfig into field map returned error: %v", err)
+	}
+	assertRuleJSONField(t, fields, "params", `{"min":1,"max":9}`)
+
+	var decodedConfig GeneratorConfig
+	if err := json.Unmarshal(encodedConfig, &decodedConfig); err != nil {
+		t.Fatalf("Unmarshal(GeneratorConfig with params) returned error: %v", err)
+	}
+	if string(decodedConfig.Params.Raw) != `{"min":1,"max":9}` {
+		t.Fatalf("decoded GeneratorConfig params raw = %q, want preserved payload", decodedConfig.Params.Raw)
+	}
+
+	if _, err := json.Marshal(GeneratorParams{Raw: json.RawMessage(`{"bad":`)}); err == nil {
+		t.Fatalf("Marshal(GeneratorParams with invalid raw JSON) returned nil error")
+	}
+}
+
 func TestGeneratorConfigExcludesOutOfScopeFields(t *testing.T) {
 	configType := reflect.TypeOf(GeneratorConfig{})
 	for index := range configType.NumField() {
