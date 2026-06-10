@@ -51,6 +51,11 @@ func TestProjectJSONRoundTripPreservesAggregateRootFields(t *testing.T) {
 		t.Fatalf("Marshal(Project) returned error: %v", err)
 	}
 
+	const wantJSON = `{"id":101,"connectionId":202,"name":"Reporting Demo","description":"Reusable generation setup for reporting demos.","createdAt":"2026-06-10T09:30:00Z","updatedAt":"2026-06-10T10:45:00Z"}`
+	if string(encoded) != wantJSON {
+		t.Fatalf("Project JSON = %s, want exact lower camelCase contract %s", encoded, wantJSON)
+	}
+
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		t.Fatalf("Unmarshal encoded Project into field map returned error: %v", err)
@@ -64,6 +69,66 @@ func TestProjectJSONRoundTripPreservesAggregateRootFields(t *testing.T) {
 	}
 	if !reflect.DeepEqual(decoded, original) {
 		t.Fatalf("Project round trip = %#v, want %#v", decoded, original)
+	}
+}
+
+func TestProjectTableJSONLoadsNullableRowCountFixtures(t *testing.T) {
+	tests := []struct {
+		name            string
+		payload         string
+		wantNil         bool
+		wantValue       int
+		wantRawRowCount string
+	}{
+		{
+			name:            "nil means dynamically derived",
+			payload:         `{"id":301,"projectId":101,"tableId":202,"rowCount":null,"truncateBefore":false,"executionOrder":3,"createdAt":"2026-06-10T11:15:00Z","updatedAt":"2026-06-10T11:45:00Z"}`,
+			wantNil:         true,
+			wantRawRowCount: "null",
+		},
+		{
+			name:            "zero means explicitly generate no rows",
+			payload:         `{"id":301,"projectId":101,"tableId":202,"rowCount":0,"truncateBefore":false,"executionOrder":3,"createdAt":"2026-06-10T11:15:00Z","updatedAt":"2026-06-10T11:45:00Z"}`,
+			wantValue:       0,
+			wantRawRowCount: "0",
+		},
+		{
+			name:            "positive means explicit row target",
+			payload:         `{"id":301,"projectId":101,"tableId":202,"rowCount":25,"truncateBefore":false,"executionOrder":3,"createdAt":"2026-06-10T11:15:00Z","updatedAt":"2026-06-10T11:45:00Z"}`,
+			wantValue:       25,
+			wantRawRowCount: "25",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var decoded ProjectTable
+			if err := json.Unmarshal([]byte(tt.payload), &decoded); err != nil {
+				t.Fatalf("Unmarshal(ProjectTable) returned error: %v", err)
+			}
+
+			if tt.wantNil {
+				if decoded.RowCount != nil {
+					t.Fatalf("decoded RowCount = %#v, want nil", decoded.RowCount)
+				}
+			} else if decoded.RowCount == nil || *decoded.RowCount != tt.wantValue {
+				t.Fatalf("decoded RowCount = %#v, want pointer to %d", decoded.RowCount, tt.wantValue)
+			}
+
+			encoded, err := json.Marshal(decoded)
+			if err != nil {
+				t.Fatalf("Marshal(ProjectTable) returned error: %v", err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatalf("Unmarshal encoded ProjectTable into field map returned error: %v", err)
+			}
+			assertProjectJSONFieldsPresent(t, fields, "id", "projectId", "tableId", "rowCount", "truncateBefore", "executionOrder", "createdAt", "updatedAt")
+			assertProjectJSONFieldsAbsent(t, fields, "project_id", "table_id", "row_count", "truncate_before", "execution_order")
+			if got := string(fields["rowCount"]); got != tt.wantRawRowCount {
+				t.Fatalf("encoded rowCount = %s, want %s", got, tt.wantRawRowCount)
+			}
+		})
 	}
 }
 
@@ -348,6 +413,29 @@ func TestProjectTableRelationJSONRoundTripPreservesRelationSnapshot(t *testing.T
 				t.Fatalf("ProjectTableRelation round trip = %#v, want %#v", decoded, original)
 			}
 		})
+	}
+}
+
+func TestProjectTableRelationJSONLoadsLowerCamelCaseFixture(t *testing.T) {
+	const payload = `{"id":701,"projectId":101,"tableRelationId":401,"parentProjectTableId":501,"childProjectTableId":502,"multiplierMin":0,"multiplierMax":3,"relValueSource":"MERGED","relSourceSql":"select id from parent","createdAt":"2026-06-10T12:15:00Z","updatedAt":"2026-06-10T12:45:00Z"}`
+
+	var decoded ProjectTableRelation
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Fatalf("Unmarshal(ProjectTableRelation) returned error: %v", err)
+	}
+	if decoded.ParentProjectTableID == nil || *decoded.ParentProjectTableID != 501 {
+		t.Fatalf("decoded ParentProjectTableID = %#v, want pointer to 501", decoded.ParentProjectTableID)
+	}
+	if decoded.RelValueSource != RelationValueSourceMerged {
+		t.Fatalf("decoded RelValueSource = %q, want %q", decoded.RelValueSource, RelationValueSourceMerged)
+	}
+
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("Marshal(ProjectTableRelation) returned error: %v", err)
+	}
+	if string(encoded) != payload {
+		t.Fatalf("ProjectTableRelation JSON = %s, want exact lower camelCase contract %s", encoded, payload)
 	}
 }
 

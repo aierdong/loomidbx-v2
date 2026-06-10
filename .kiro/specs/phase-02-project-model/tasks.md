@@ -60,7 +60,7 @@
   - _Depends: 3.2_
 
 - [ ] 4. 增加单元与边界测试
-- [ ] 4.1 覆盖模型、枚举和 JSON 序列化测试
+- [x] 4.1 覆盖模型、枚举和 JSON 序列化测试
   - 覆盖 Project、ProjectTable、ProjectTableRelation 的 JSON 往返和 lower camelCase 字段名。
   - 覆盖 rowCount 的 nil、0、正数语义，以及三种 RelationValueSource 枚举字符串稳定性。
   - 完成后，破坏字段名、枚举值或 nullable 语义的改动会导致相关 Go 测试失败。
