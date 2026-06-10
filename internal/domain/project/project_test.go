@@ -217,6 +217,186 @@ func TestProjectTableLoadsPersistedProjectReferenceAndFalseTruncate(t *testing.T
 	}
 }
 
+func TestRelationValueSourceExposesStableEnumStringsAndUnknownRecognition(t *testing.T) {
+	tests := []struct {
+		name   string
+		source RelationValueSource
+		want   string
+		known  bool
+	}{
+		{name: "from execution", source: RelationValueSourceFromExecution, want: "FROM_EXECUTION", known: true},
+		{name: "from db query", source: RelationValueSourceFromDBQuery, want: "FROM_DB_QUERY", known: true},
+		{name: "merged", source: RelationValueSourceMerged, want: "MERGED", known: true},
+		{name: "unknown", source: RelationValueSource("ARCHIVED"), want: "ARCHIVED", known: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(tt.source); got != tt.want {
+				t.Fatalf("RelationValueSource string = %q, want %q", got, tt.want)
+			}
+			if got := tt.source.IsKnown(); got != tt.known {
+				t.Fatalf("RelationValueSource(%q).IsKnown() = %v, want %v", tt.source, got, tt.known)
+			}
+
+			encoded, err := json.Marshal(tt.source)
+			if err != nil {
+				t.Fatalf("Marshal(RelationValueSource) returned error: %v", err)
+			}
+			if got := string(encoded); got != `"`+tt.want+`"` {
+				t.Fatalf("encoded RelationValueSource = %s, want %q", got, tt.want)
+			}
+
+			var decoded RelationValueSource
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("Unmarshal(RelationValueSource) returned error: %v", err)
+			}
+			if decoded != tt.source {
+				t.Fatalf("decoded RelationValueSource = %q, want %q", decoded, tt.source)
+			}
+		})
+	}
+}
+
+func TestProjectTableRelationExposesStableContractFields(t *testing.T) {
+	relationType := reflect.TypeOf(ProjectTableRelation{})
+
+	assertProjectJSONTags(t, relationType, map[string]string{
+		"ID":                   "id",
+		"ProjectID":            "projectId",
+		"TableRelationID":      "tableRelationId",
+		"ParentProjectTableID": "parentProjectTableId",
+		"ChildProjectTableID":  "childProjectTableId",
+		"MultiplierMin":        "multiplierMin",
+		"MultiplierMax":        "multiplierMax",
+		"RelValueSource":       "relValueSource",
+		"RelSourceSQL":         "relSourceSql",
+		"CreatedAt":            "createdAt",
+		"UpdatedAt":            "updatedAt",
+	})
+	assertProjectStructJSONFieldSet(t, relationType, []string{"id", "projectId", "tableRelationId", "parentProjectTableId", "childProjectTableId", "multiplierMin", "multiplierMax", "relValueSource", "relSourceSql", "createdAt", "updatedAt"})
+
+	assertProjectFieldType(t, relationType, "ID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, relationType, "ProjectID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, relationType, "TableRelationID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, relationType, "ParentProjectTableID", reflect.TypeOf((*int64)(nil)))
+	assertProjectFieldType(t, relationType, "ChildProjectTableID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, relationType, "MultiplierMin", reflect.TypeOf(0))
+	assertProjectFieldType(t, relationType, "MultiplierMax", reflect.TypeOf(0))
+	assertProjectFieldType(t, relationType, "RelValueSource", reflect.TypeOf(RelationValueSource("")))
+	assertProjectFieldType(t, relationType, "RelSourceSQL", reflect.TypeOf(""))
+	assertProjectFieldType(t, relationType, "CreatedAt", reflect.TypeOf(time.Time{}))
+	assertProjectFieldType(t, relationType, "UpdatedAt", reflect.TypeOf(time.Time{}))
+}
+
+func TestProjectTableRelationJSONRoundTripPreservesRelationSnapshot(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 12, 15, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 10, 12, 45, 0, 0, time.UTC)
+	parentID := int64(501)
+
+	tests := []struct {
+		name          string
+		parentID      *int64
+		source        RelationValueSource
+		sourceSQL     string
+		wantRawParent string
+	}{
+		{name: "parent omitted and values from db query", parentID: nil, source: RelationValueSourceFromDBQuery, sourceSQL: "select id from parent", wantRawParent: "null"},
+		{name: "parent present and values from execution", parentID: &parentID, source: RelationValueSourceFromExecution, sourceSQL: "", wantRawParent: "501"},
+		{name: "parent present and values merged", parentID: &parentID, source: RelationValueSourceMerged, sourceSQL: "select id from parent", wantRawParent: "501"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := ProjectTableRelation{
+				ID:                   701,
+				ProjectID:            101,
+				TableRelationID:      401,
+				ParentProjectTableID: tt.parentID,
+				ChildProjectTableID:  502,
+				MultiplierMin:        0,
+				MultiplierMax:        3,
+				RelValueSource:       tt.source,
+				RelSourceSQL:         tt.sourceSQL,
+				CreatedAt:            createdAt,
+				UpdatedAt:            updatedAt,
+			}
+
+			encoded, err := json.Marshal(original)
+			if err != nil {
+				t.Fatalf("Marshal(ProjectTableRelation) returned error: %v", err)
+			}
+
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatalf("Unmarshal encoded ProjectTableRelation into field map returned error: %v", err)
+			}
+			assertProjectJSONFieldsPresent(t, fields, "id", "projectId", "tableRelationId", "parentProjectTableId", "childProjectTableId", "multiplierMin", "multiplierMax", "relValueSource", "relSourceSql", "createdAt", "updatedAt")
+			assertProjectJSONFieldsAbsent(t, fields, "project_id", "table_relation_id", "parent_project_table_id", "child_project_table_id", "multiplier_min", "multiplier_max", "rel_value_source", "rel_source_sql", "relSourceSQL", "executionStatus", "runtimeState", "sqlResult", "generatedRows")
+			if got := string(fields["parentProjectTableId"]); got != tt.wantRawParent {
+				t.Fatalf("encoded parentProjectTableId = %s, want %s", got, tt.wantRawParent)
+			}
+			if got := string(fields["relValueSource"]); got != `"`+string(tt.source)+`"` {
+				t.Fatalf("encoded relValueSource = %s, want %q", got, tt.source)
+			}
+
+			var decoded ProjectTableRelation
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("Unmarshal(ProjectTableRelation) returned error: %v", err)
+			}
+			if !reflect.DeepEqual(decoded, original) {
+				t.Fatalf("ProjectTableRelation round trip = %#v, want %#v", decoded, original)
+			}
+		})
+	}
+}
+
+func TestProjectTableRelationLoadsUnknownValueSourceWithoutExecutingSQL(t *testing.T) {
+	payload := `{"id":701,"projectId":101,"tableRelationId":401,"parentProjectTableId":null,"childProjectTableId":502,"multiplierMin":1,"multiplierMax":2,"relValueSource":"ARCHIVED","relSourceSql":"select secret from parent","createdAt":"2026-06-10T12:15:00Z","updatedAt":"2026-06-10T12:45:00Z"}`
+
+	var decoded ProjectTableRelation
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Fatalf("Unmarshal(ProjectTableRelation) with unknown relValueSource returned error: %v", err)
+	}
+
+	if decoded.ProjectID <= 0 {
+		t.Fatalf("ProjectTableRelation.ProjectID = %d, want positive persisted Project reference", decoded.ProjectID)
+	}
+	if decoded.ParentProjectTableID != nil {
+		t.Fatalf("ParentProjectTableID = %#v, want nil for absent upstream ProjectTable", decoded.ParentProjectTableID)
+	}
+	if decoded.RelValueSource.IsKnown() {
+		t.Fatalf("unknown relValueSource %q was reported as known", decoded.RelValueSource)
+	}
+	if decoded.RelSourceSQL != "select secret from parent" {
+		t.Fatalf("RelSourceSQL = %q, want SQL text preserved as configuration snapshot", decoded.RelSourceSQL)
+	}
+}
+
+func TestProjectTableRelationExcludesExecutionAlgorithmsAndRuntimeState(t *testing.T) {
+	relationType := reflect.TypeOf(ProjectTableRelation{})
+	for _, forbidden := range []string{
+		"GeneratedRows",
+		"WrittenRows",
+		"ExecutionStatus",
+		"RuntimeState",
+		"Status",
+		"SQLResult",
+		"QueryResult",
+		"DatabaseHandle",
+		"Connection",
+		"GeneratorConfig",
+		"FieldRules",
+		"GenerationRules",
+		"SortOrder",
+		"ResolvedParentRows",
+	} {
+		if _, ok := relationType.FieldByName(forbidden); ok {
+			t.Fatalf("ProjectTableRelation exposes runtime, SQL execution, or out-of-scope field %s", forbidden)
+		}
+	}
+}
+
 func TestProjectTableExcludesFieldRulesRelationsAndRuntimeState(t *testing.T) {
 	projectTableType := reflect.TypeOf(ProjectTable{})
 	for _, forbidden := range []string{
@@ -298,8 +478,18 @@ func TestProjectDomainScaffoldIsDiscoverableAndPure(t *testing.T) {
 
 func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 	allowedExportedTypes := map[string]bool{
-		"Project":      true,
-		"ProjectTable": true,
+		"Project":              true,
+		"ProjectTable":         true,
+		"ProjectTableRelation": true,
+		"RelationValueSource":  true,
+	}
+	allowedExportedValues := map[string]bool{
+		"RelationValueSourceFromExecution": true,
+		"RelationValueSourceFromDBQuery":   true,
+		"RelationValueSourceMerged":        true,
+	}
+	allowedExportedFuncs := map[string]bool{
+		"IsKnown": true,
 	}
 
 	files, err := filepath.Glob("*.go")
@@ -332,14 +522,14 @@ func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 						}
 					case *ast.ValueSpec:
 						for _, name := range typedSpec.Names {
-							if name.IsExported() {
-								t.Fatalf("%s exports %s before enum or validation task boundaries", file, name.Name)
+							if name.IsExported() && !allowedExportedValues[name.Name] {
+								t.Fatalf("%s exports %s outside ProjectRelationModel or RelationValueSource task boundary", file, name.Name)
 							}
 						}
 					}
 				}
 			case *ast.FuncDecl:
-				if typed.Name.IsExported() {
+				if typed.Name.IsExported() && !allowedExportedFuncs[typed.Name.Name] {
 					t.Fatalf("%s exports %s before validation task boundaries", file, typed.Name.Name)
 				}
 			}

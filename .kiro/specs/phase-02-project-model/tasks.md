@@ -25,7 +25,7 @@
   - _Boundary: ProjectTableModel_
   - _Depends: 1_
 
-- [ ] 2.3 (P) 实现 ProjectTableRelation 与取值来源合同
+- [x] 2.3 (P) 实现 ProjectTableRelation 与取值来源合同
   - 表达关系实例化快照、上下游 ProjectTable 引用、倍数范围、取值来源和 SQL 文本字段。
   - 明确 ProjectTableRelation 只能引用已持久化 Project，并保护 `parentProjectTableId` 与取值来源的组合语义。
   - 稳定 `FROM_EXECUTION`、`FROM_DB_QUERY`、`MERGED` 枚举字符串，并能识别未知枚举。
