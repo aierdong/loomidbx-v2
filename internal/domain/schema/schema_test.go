@@ -175,6 +175,117 @@ func TestSchemaIdentityUnmarshalRejectsMissingAndNullSchemaName(t *testing.T) {
 	}
 }
 
+func TestCoreTableColumnModelsExposeStableDesignFields(t *testing.T) {
+	assertJSONTags(t, reflect.TypeOf(DbTable{}), map[string]string{
+		"ID":          "id",
+		"SchemaID":    "schemaId",
+		"TableName":   "tableName",
+		"Comment":     "comment",
+		"DDLSnapshot": "ddlSnapshot",
+		"ScannedAt":   "scannedAt",
+		"CreatedAt":   "createdAt",
+		"UpdatedAt":   "updatedAt",
+	})
+	assertJSONTags(t, reflect.TypeOf(DbColumn{}), map[string]string{
+		"ID":              "id",
+		"TableID":         "tableId",
+		"OrdinalPosition": "ordinalPosition",
+		"ColumnName":      "columnName",
+		"NativeType":      "nativeType",
+		"LogicalType":     "logicalType",
+		"Nullable":        "nullable",
+		"DefaultValue":    "defaultValue",
+		"IsPrimaryKey":    "isPrimaryKey",
+		"Comment":         "comment",
+		"CreatedAt":       "createdAt",
+		"UpdatedAt":       "updatedAt",
+	})
+
+	assertStructJSONFieldSet(t, reflect.TypeOf(DbTable{}), []string{"id", "schemaId", "tableName", "comment", "ddlSnapshot", "scannedAt", "createdAt", "updatedAt"})
+	assertStructJSONFieldSet(t, reflect.TypeOf(DbColumn{}), []string{"id", "tableId", "ordinalPosition", "columnName", "nativeType", "logicalType", "nullable", "defaultValue", "isPrimaryKey", "comment", "createdAt", "updatedAt"})
+}
+
+func TestTableColumnSerializationPreservesStableIdentityParentsAndNullableFields(t *testing.T) {
+	scannedAt := time.Date(2026, 6, 10, 9, 30, 0, 0, time.UTC)
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 10, 11, 0, 0, 0, time.UTC)
+	defaultValue := "CURRENT_TIMESTAMP"
+
+	table := DbTable{
+		ID:          401,
+		SchemaID:    303,
+		TableName:   "orders",
+		Comment:     "business order table",
+		DDLSnapshot: "CREATE TABLE orders (...) ",
+		ScannedAt:   &scannedAt,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
+	}
+	assertJSONRoundTrip(t, "DbTable", table)
+
+	column := DbColumn{
+		ID:              501,
+		TableID:         table.ID,
+		OrdinalPosition: 2,
+		ColumnName:      "created_at",
+		NativeType:      "timestamp with time zone",
+		LogicalType:     ColumnLogicalType{},
+		Nullable:        false,
+		DefaultValue:    &defaultValue,
+		IsPrimaryKey:    false,
+		Comment:         "creation timestamp",
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	}
+	assertJSONRoundTrip(t, "DbColumn", column)
+
+	encoded, err := json.Marshal(DbColumn{ID: 502, TableID: table.ID, OrdinalPosition: 3, ColumnName: "description", NativeType: "text", LogicalType: ColumnLogicalType{}, Nullable: true})
+	if err != nil {
+		t.Fatalf("Marshal(DbColumn) with nil defaultValue returned error: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatalf("Unmarshal encoded DbColumn into field map returned error: %v", err)
+	}
+	assertJSONFieldsPresent(t, fields, "id", "tableId", "ordinalPosition", "columnName", "nativeType", "logicalType", "nullable", "defaultValue", "isPrimaryKey", "comment", "createdAt", "updatedAt")
+	if string(fields["defaultValue"]) != "null" {
+		t.Fatalf("defaultValue JSON = %s, want null for nil default value", fields["defaultValue"])
+	}
+	if string(fields["nullable"]) != "true" {
+		t.Fatalf("nullable JSON = %s, want true", fields["nullable"])
+	}
+	if string(fields["isPrimaryKey"]) != "false" {
+		t.Fatalf("isPrimaryKey JSON = %s, want false", fields["isPrimaryKey"])
+	}
+}
+
+func TestTableColumnModelsUseScalarParentReferencesAndNoOutOfScopeFields(t *testing.T) {
+	tableType := reflect.TypeOf(DbTable{})
+	assertFieldType(t, tableType, "ID", reflect.TypeOf(int64(0)))
+	assertFieldType(t, tableType, "SchemaID", reflect.TypeOf(int64(0)))
+
+	columnType := reflect.TypeOf(DbColumn{})
+	assertFieldType(t, columnType, "ID", reflect.TypeOf(int64(0)))
+	assertFieldType(t, columnType, "TableID", reflect.TypeOf(int64(0)))
+	assertFieldType(t, columnType, "OrdinalPosition", reflect.TypeOf(int(0)))
+	assertFieldType(t, columnType, "LogicalType", reflect.TypeOf(ColumnLogicalType{}))
+	assertFieldType(t, columnType, "DefaultValue", reflect.TypeOf((*string)(nil)))
+
+	for _, typ := range []reflect.Type{tableType, columnType} {
+		for index := range typ.NumField() {
+			field := typ.Field(index)
+			fieldName := strings.ToLower(field.Name)
+			jsonName := strings.ToLower(strings.Split(field.Tag.Get("json"), ",")[0])
+
+			for _, forbidden := range []string{"service", "api", "ui", "wails", "vue", "execution", "engine", "driver", "sql", "foreign", "relation", "project"} {
+				if strings.Contains(fieldName, forbidden) || strings.Contains(jsonName, forbidden) {
+					t.Fatalf("%s.%s exposes out-of-scope field matching %q with json tag %q", typ.Name(), field.Name, forbidden, field.Tag.Get("json"))
+				}
+			}
+		}
+	}
+}
+
 func TestCoreSchemaModelsExposeOnlyStableDesignFields(t *testing.T) {
 	assertStructJSONFieldSet(t, reflect.TypeOf(DbCatalog{}), []string{"id", "connectionId", "catalogName", "scannedAt", "createdAt", "updatedAt"})
 	assertStructJSONFieldSet(t, reflect.TypeOf(DbSchema{}), []string{"id", "catalogId", "schemaName", "scannedAt", "createdAt", "updatedAt"})
