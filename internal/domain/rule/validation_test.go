@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gerdong/loomidbx/internal/domain/schema"
 )
@@ -93,6 +95,120 @@ func TestFieldRuleIssueCodesExtendSchemaIssueCodeContract(t *testing.T) {
 	}
 }
 
+func TestValidateGeneratorConfigAcceptsValidDraftAndPersistedModels(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Hour)
+
+	draft := validGeneratorConfig()
+	draft.ID = 0
+	draft.CreatedAt = time.Time{}
+	draft.UpdatedAt = time.Time{}
+	if issues := ValidateGeneratorConfig(draft, schema.SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateGeneratorConfig(valid draft) = %#v, want no issues", issues)
+	}
+
+	persisted := validGeneratorConfig()
+	persisted.ID = 11
+	persisted.CreatedAt = createdAt
+	persisted.UpdatedAt = updatedAt
+	if issues := ValidateGeneratorConfig(persisted, schema.SchemaValidationModePersisted); len(issues) != 0 {
+		t.Fatalf("ValidateGeneratorConfig(valid persisted) = %#v, want no issues", issues)
+	}
+}
+
+func TestValidateGeneratorConfigReturnsMultipleDomainOnlyIssues(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	config := GeneratorConfig{
+		ID:              -1,
+		ColumnID:        0,
+		GeneratorName:   "bad/name",
+		DataMappingType: DataMappingType("json"),
+		Params:          GeneratorParams{Raw: json.RawMessage(`{"apiKey":"value"}`)},
+		ConfigStatus:    ConfigStatus("DISABLED"),
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt.Add(-time.Minute),
+	}
+
+	issues := ValidateGeneratorConfig(config, schema.SchemaValidationModeDraft)
+	assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+		"id":              schema.SchemaIssueCodeInvalidID,
+		"columnId":        schema.SchemaIssueCodeInvalidID,
+		"generatorName":   schema.SchemaIssueCodeRuleInvalidText,
+		"dataMappingType": schema.SchemaIssueCodeRuleInvalidEnum,
+		"params":          schema.SchemaIssueCodeRuleSensitiveValueNotAllowed,
+		"configStatus":    schema.SchemaIssueCodeRuleInvalidEnum,
+		"updatedAt":       schema.SchemaIssueCodeInvalidTime,
+	})
+}
+
+func TestValidateGeneratorConfigUsesPersistedModeForIDAndAuditTimes(t *testing.T) {
+	config := validGeneratorConfig()
+	config.ID = 0
+	config.CreatedAt = time.Time{}
+	config.UpdatedAt = time.Time{}
+
+	issues := ValidateGeneratorConfig(config, schema.SchemaValidationModePersisted)
+	assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+		"id":        schema.SchemaIssueCodeInvalidID,
+		"createdAt": schema.SchemaIssueCodeInvalidTime,
+		"updatedAt": schema.SchemaIssueCodeInvalidTime,
+	})
+}
+
+func TestValidateGeneratorConfigRejectsUnknownMode(t *testing.T) {
+	issues := ValidateGeneratorConfig(validGeneratorConfig(), schema.SchemaValidationMode("runtime"))
+	assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+		"mode": schema.SchemaIssueCodeValidationFailed,
+	})
+}
+
+func TestValidateGeneratorConfigRejectsUnsafeGeneratorNameControlCharacters(t *testing.T) {
+	config := validGeneratorConfig()
+	config.GeneratorName = "faker.person.name\n"
+
+	issues := ValidateGeneratorConfig(config, schema.SchemaValidationModeDraft)
+	assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+		"generatorName": schema.SchemaIssueCodeRuleInvalidText,
+	})
+}
+
+func TestValidateGeneratorParamsRejectsInvalidJSONAndSensitiveFieldNames(t *testing.T) {
+	tests := []struct {
+		name   string
+		params GeneratorParams
+		code   schema.SchemaIssueCode
+	}{
+		{name: "invalid json", params: GeneratorParams{Raw: json.RawMessage(`{"bad":`)}, code: schema.SchemaIssueCodeRuleInvalidJSON},
+		{name: "password key", params: GeneratorParams{Raw: json.RawMessage(`{"password":"value"}`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
+		{name: "nested token key", params: GeneratorParams{Raw: json.RawMessage(`{"nested":{"refreshToken":"value"}}`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
+		{name: "array secret key", params: GeneratorParams{Raw: json.RawMessage(`[{"client_secret":"value"}]`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := ValidateGeneratorParams(tt.params)
+			assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{"params": tt.code})
+		})
+	}
+
+	for _, params := range []GeneratorParams{{}, {Raw: json.RawMessage("null")}, {Raw: json.RawMessage(`{"locale":"zh-CN","enabled":true}`)}} {
+		if issues := ValidateGeneratorParams(params); len(issues) != 0 {
+			t.Fatalf("ValidateGeneratorParams(%s) = %#v, want no issues", params.Raw, issues)
+		}
+	}
+}
+
+func TestValidateGeneratorConfigDoesNotValidateDeferredExternalState(t *testing.T) {
+	config := validGeneratorConfig()
+	config.ColumnID = 999999
+	config.GeneratorName = "future.registry.generator"
+	config.Params = GeneratorParams{Raw: json.RawMessage(`{"unsupportedGeneratorSpecificOption":true}`)}
+
+	if issues := ValidateGeneratorConfig(config, schema.SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateGeneratorConfig(deferred external state) = %#v, want no domain-only issues", issues)
+	}
+}
+
 func TestRulePackageDoesNotDeclareParallelValidationContracts(t *testing.T) {
 	for _, file := range ruleProductionFiles(t) {
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
@@ -161,6 +277,40 @@ func assertRuleValidationIssue(t *testing.T, got schema.SchemaValidationIssue, w
 		if strings.Contains(message, forbidden) {
 			t.Fatalf("issue message should stay safe and generic: %#v", got)
 		}
+	}
+}
+
+func assertRuleIssueCodesByPath(t *testing.T, issues []schema.SchemaValidationIssue, want map[string]schema.SchemaIssueCode) {
+	t.Helper()
+
+	if got := len(issues); got != len(want) {
+		t.Fatalf("issues count = %d, want %d: %#v", got, len(want), issues)
+	}
+	for _, issue := range issues {
+		wantCode, ok := want[issue.Path]
+		if !ok {
+			t.Fatalf("unexpected issue path %q in %#v", issue.Path, issues)
+		}
+		assertRuleValidationIssue(t, issue, schema.SchemaValidationIssue{
+			Path:     issue.Path,
+			Code:     wantCode,
+			Severity: schema.SchemaIssueSeverityError,
+			Message:  issue.Message,
+		})
+	}
+}
+
+func validGeneratorConfig() GeneratorConfig {
+	createdAt := time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC)
+	return GeneratorConfig{
+		ID:              1,
+		ColumnID:        42,
+		GeneratorName:   "faker.person.name",
+		DataMappingType: DataMappingTypeText,
+		Params:          GeneratorParams{Raw: json.RawMessage(`{"locale":"en","enabled":true}`)},
+		ConfigStatus:    ConfigStatusActive,
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt.Add(time.Minute),
 	}
 }
 
