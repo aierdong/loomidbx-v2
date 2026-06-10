@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 建立 `数据库 Schema 层级模型` 领域包
+- [x] 1. 建立 `数据库 Schema 层级模型` 领域包
 - [x] 1.1 创建核心模型文件 (P)
   - 创建 `数据库 Schema 层级模型` 所需 Go 文件，并保持 domain 层职责。
   - 为导出类型、字段、常量和枚举值添加项目要求的 Go 注释。
@@ -8,7 +8,7 @@
   - _Requirements: 1, 2_
   - _Boundary: DomainScaffold_
 
-- [ ] 2. 实现核心模型与枚举
+- [x] 2. 实现核心模型与枚举
 - [x] 2.1 实现核心实体和值对象
   - 实现 `DbCatalog`、`DbSchema` 的稳定身份、父级引用、时间字段和 JSON 标签，字段合同必须与 `design.md` 的 Data Models 表一致。
   - 实现 `SchemaIdentity`，确保 `schemaName` 在 JSON 中始终存在，且空字符串稳定表示隐式 Schema。
@@ -28,7 +28,7 @@
   - _Boundary: DomainEnums_
   - _Depends: 1.1_
 
-- [ ] 3. 实现基础校验
+- [x] 3. 实现基础校验
 - [x] 3.1 定义字段级校验错误结构
   - 定义字段路径、错误码、严重级别和安全消息。
   - `path` 必须使用 JSON 字段名语义，`severity` 必须使用 `info`、`warning`、`error` 稳定值。
@@ -48,7 +48,7 @@
   - _Boundary: Validation_
   - _Depends: 3.1_
 
-- [ ] 4. 增加测试
+- [x] 4. 增加测试
 - [x] 4.1 覆盖序列化和枚举测试 (P)
   - 测试 JSON 往返、缺省字段兼容、枚举字符串稳定性和 validation issue 字段形状。
   - 测试隐式 Schema 序列化时 `schemaName` 字段存在且值为 `""`。
@@ -75,7 +75,7 @@
   - _Boundary: ValidationRun_
   - _Depends: 4.1, 4.2_
 
-- [ ] 6. 补充 domain-only 冒烟验证说明
+- [x] 6. 补充 domain-only 冒烟验证说明
 - [x] 6.1 编写数据库 Schema 层级模型冒烟验证记录
   - 新增或更新 `tests/smoke/phase-02-database-schema-model.md`，记录本规格是纯 Domain 层包，不启动 Wails、Vue、真实数据库、执行引擎或 API/UI 工作流。
   - 在 smoke 记录中明确可执行验证命令：优先记录 `task test` 或等价项目测试入口，同时记录领域包级 `go test ./internal/domain/schema` 作为本规格直接证据；如环境不支持 Task，则记录 `go test ./...` 作为完整 Go 测试替代证据。
