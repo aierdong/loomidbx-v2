@@ -162,6 +162,44 @@ func TestValidateGeneratorConfigRejectsUnknownMode(t *testing.T) {
 	})
 }
 
+func TestValidateGeneratorConfigRejectsRequiredFieldOmissions(t *testing.T) {
+	config := validGeneratorConfig()
+	config.GeneratorName = " \t "
+	config.DataMappingType = ""
+	config.ConfigStatus = ""
+
+	issues := ValidateGeneratorConfig(config, schema.SchemaValidationModeDraft)
+	assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+		"generatorName":   schema.SchemaIssueCodeRequired,
+		"dataMappingType": schema.SchemaIssueCodeRequired,
+		"configStatus":    schema.SchemaIssueCodeRequired,
+	})
+}
+
+func TestValidateGeneratorConfigRejectsGeneratorNameBoundaryValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		generatorName string
+	}{
+		{name: "too long", generatorName: strings.Repeat("a", 101)},
+		{name: "forward slash", generatorName: "faker/person/name"},
+		{name: "backslash", generatorName: `faker\person\name`},
+		{name: "control character", generatorName: "faker.person.name\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := validGeneratorConfig()
+			config.GeneratorName = tt.generatorName
+
+			issues := ValidateGeneratorConfig(config, schema.SchemaValidationModeDraft)
+			assertRuleIssueCodesByPath(t, issues, map[string]schema.SchemaIssueCode{
+				"generatorName": schema.SchemaIssueCodeRuleInvalidText,
+			})
+		})
+	}
+}
+
 func TestValidateGeneratorConfigRejectsUnsafeGeneratorNameControlCharacters(t *testing.T) {
 	config := validGeneratorConfig()
 	config.GeneratorName = "faker.person.name\n"
@@ -182,6 +220,7 @@ func TestValidateGeneratorParamsRejectsInvalidJSONAndSensitiveFieldNames(t *test
 		{name: "password key", params: GeneratorParams{Raw: json.RawMessage(`{"password":"value"}`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
 		{name: "nested token key", params: GeneratorParams{Raw: json.RawMessage(`{"nested":{"refreshToken":"value"}}`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
 		{name: "array secret key", params: GeneratorParams{Raw: json.RawMessage(`[{"client_secret":"value"}]`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
+		{name: "hyphenated api key", params: GeneratorParams{Raw: json.RawMessage(`{"api-key":"value"}`)}, code: schema.SchemaIssueCodeRuleSensitiveValueNotAllowed},
 	}
 
 	for _, tt := range tests {
@@ -191,10 +230,18 @@ func TestValidateGeneratorParamsRejectsInvalidJSONAndSensitiveFieldNames(t *test
 		})
 	}
 
-	for _, params := range []GeneratorParams{{}, {Raw: json.RawMessage("null")}, {Raw: json.RawMessage(`{"locale":"zh-CN","enabled":true}`)}} {
+	for _, params := range []GeneratorParams{{}, {Raw: json.RawMessage("null")}, {Raw: json.RawMessage(`{"locale":"zh-CN","enabled":true}`)}, {Raw: json.RawMessage(`[1,"safe",true]`)}} {
 		if issues := ValidateGeneratorParams(params); len(issues) != 0 {
 			t.Fatalf("ValidateGeneratorParams(%s) = %#v, want no issues", params.Raw, issues)
 		}
+	}
+}
+
+func TestValidateGeneratorParamsDoesNotValidateGeneratorSpecificSchema(t *testing.T) {
+	params := GeneratorParams{Raw: json.RawMessage(`{"min":99,"max":1,"enum":[],"unsupportedOption":true}`)}
+
+	if issues := ValidateGeneratorParams(params); len(issues) != 0 {
+		t.Fatalf("ValidateGeneratorParams(generator-specific schema boundary) = %#v, want no domain-only issues", issues)
 	}
 }
 
@@ -258,6 +305,21 @@ func TestRulePackageProductionFilesOnlyImportAllowedValidationDependencies(t *te
 				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
 					t.Fatalf("rule domain file %s imports out-of-scope package %q", file, importPath)
 				}
+			}
+		}
+	}
+}
+
+func TestRulePackageProductionFilesDoNotUseOutOfScopeValidationAPIs(t *testing.T) {
+	for _, file := range ruleProductionFiles(t) {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read rule package file %s: %v", file, err)
+		}
+		text := string(content)
+		for _, forbidden := range []string{"sql.", "db.", "repository.", "service.", "wails.", "runtime.", "exec.", "http.", "registry."} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("rule domain file %s uses out-of-scope validation API marker %q", file, forbidden)
 			}
 		}
 	}
