@@ -198,6 +198,60 @@ func TestRelationIndexedIssuePathsSatisfyValidationIssueContract(t *testing.T) {
 	}
 }
 
+func TestDecodeRelationJSONReportsMissingRequiredFieldsBeforeValidation(t *testing.T) {
+	_, foreignKeyIssues := DecodeForeignKeyJSON([]byte(`{"tableId":41,"referencedTableId":42,"columnIds":[51],"referencedColumnIds":[61]}`), SchemaValidationModeDraft)
+	assertIssuePaths(t, foreignKeyIssues, []string{"id", "fkName", "createdAt"})
+	assertIssueCodes(t, foreignKeyIssues, map[string]SchemaIssueCode{
+		"id":        SchemaIssueCodeRequired,
+		"fkName":    SchemaIssueCodeRequired,
+		"createdAt": SchemaIssueCodeRequired,
+	})
+	assertAllIssuesSafeErrors(t, foreignKeyIssues)
+
+	_, relationIssues := DecodeTableRelationJSON([]byte(`{"id":0,"relationType":"PARENT_CHILD","parentTableId":42,"childTableId":41,"parentColumnIds":[61],"childColumnIds":[51],"multiplierMax":1,"createdAt":"0001-01-01T00:00:00Z"}`), SchemaValidationModeDraft)
+	assertIssuePaths(t, relationIssues, []string{"multiplierMin", "isLogical", "updatedAt"})
+	assertIssueCodes(t, relationIssues, map[string]SchemaIssueCode{
+		"multiplierMin": SchemaIssueCodeRequired,
+		"isLogical":     SchemaIssueCodeRequired,
+		"updatedAt":     SchemaIssueCodeRequired,
+	})
+	assertAllIssuesSafeErrors(t, relationIssues)
+}
+
+func TestDecodeTableRelationJSONAcceptsExplicitFalseAndZeroRequiredValues(t *testing.T) {
+	_, issues := DecodeTableRelationJSON([]byte(`{"id":0,"relationType":"PARENT_CHILD","parentTableId":42,"childTableId":41,"parentColumnIds":[61],"childColumnIds":[51],"multiplierMin":0,"multiplierMax":0,"isLogical":false,"createdAt":"0001-01-01T00:00:00Z","updatedAt":"0001-01-01T00:00:00Z"}`), SchemaValidationModeDraft)
+	if len(issues) != 0 {
+		t.Fatalf("DecodeTableRelationJSON(explicit zero and false required values) issues = %#v, want none", issues)
+	}
+}
+
+func TestRelationValidationKeepsCrossObjectIntegrityOutOfScope(t *testing.T) {
+	foreignKey := ForeignKey{
+		TableID:             41,
+		FKName:              "fk_self_parent",
+		ReferencedTableID:   41,
+		ColumnIDs:           []int64{501},
+		ReferencedColumnIDs: []int64{601},
+	}
+	if issues := ValidateForeignKey(foreignKey, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateForeignKey(self reference with plausible scalar ids) issues = %#v, want no table existence, column ownership, uniqueness, or cycle checks", issues)
+	}
+
+	relation := TableRelation{
+		RelationType:    RelationTypeJoinTable,
+		ParentTableID:   41,
+		ChildTableID:    41,
+		ParentColumnIDs: []int64{601},
+		ChildColumnIDs:  []int64{501},
+		MultiplierMin:   0,
+		MultiplierMax:   0,
+		IsLogical:       true,
+	}
+	if issues := ValidateTableRelation(relation, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateTableRelation(self relation with plausible scalar ids) issues = %#v, want no table existence, column ownership, graph cycle, topological order, or join capacity checks", issues)
+	}
+}
+
 func issuePaths(issues []SchemaValidationIssue) []string {
 	paths := make([]string, 0, len(issues))
 	for _, issue := range issues {
