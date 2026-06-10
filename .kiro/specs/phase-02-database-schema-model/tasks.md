@@ -74,3 +74,13 @@
   - _Requirements: 5_
   - _Boundary: ValidationRun_
   - _Depends: 4.1, 4.2_
+
+- [ ] 6. 补充 domain-only 冒烟验证说明
+- [x] 6.1 编写数据库 Schema 层级模型冒烟验证记录
+  - 新增或更新 `tests/smoke/phase-02-database-schema-model.md`，记录本规格是纯 Domain 层包，不启动 Wails、Vue、真实数据库、执行引擎或 API/UI 工作流。
+  - 在 smoke 记录中明确可执行验证命令：优先记录 `task test` 或等价项目测试入口，同时记录领域包级 `go test ./internal/domain/schema` 作为本规格直接证据；如环境不支持 Task，则记录 `go test ./...` 作为完整 Go 测试替代证据。
+  - 如需要，更新 `tests/smoke/README.md`，说明该 smoke 记录属于 domain-only 规格的运行时替代证据，不暗示已经完成端到端 liveness、真实扫描或桌面启动验证。
+  - 完成后，验证报告可以引用该 smoke 记录和命令结果，将“纯 Domain 层无法闭环验证”的结论升级为有明确替代证据的判断。
+  - _Requirements: 5_
+  - _Boundary: DomainSmokeValidationDocs_
+  - _Depends: 5_
