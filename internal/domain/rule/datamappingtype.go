@@ -19,3 +19,27 @@ const (
 	// DataMappingTypeDatetime represents generated date or time output.
 	DataMappingTypeDatetime DataMappingType = "datetime"
 )
+
+// IsKnown reports whether the data mapping type is one of the stable values owned by this domain model.
+func (t DataMappingType) IsKnown() bool {
+	switch t {
+	case DataMappingTypeText,
+		DataMappingTypeInteger,
+		DataMappingTypeFloat,
+		DataMappingTypeBoolean,
+		DataMappingTypeDatetime:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsUnknown reports whether the data mapping type is outside the stable values owned by this domain model.
+func (t DataMappingType) IsUnknown() bool {
+	return !t.IsKnown()
+}
+
+// String returns the data mapping type as its stable JSON/string contract value.
+func (t DataMappingType) String() string {
+	return string(t)
+}
