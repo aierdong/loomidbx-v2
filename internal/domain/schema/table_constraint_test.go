@@ -2,7 +2,10 @@ package schema
 
 import (
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -515,6 +518,134 @@ func TestTableFieldConstraintKnownEnumsSerializeStableStrings(t *testing.T) {
 	}
 }
 
+func TestValidationBoundaryCoversBasicMultiErrorUpstreamReferencesAndOutOfScopeLimits(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Second)
+	zeroScannedAt := time.Time{}
+
+	tableIssues := ValidateTable(DbTable{
+		ID:        -1,
+		SchemaID:  0,
+		TableName: "bad/table",
+		ScannedAt: &zeroScannedAt,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}, SchemaValidationModeDraft)
+	assertIssuePaths(t, tableIssues, []string{"id", "schemaId", "tableName", "scannedAt", "updatedAt"})
+	assertIssueCodes(t, tableIssues, map[string]SchemaIssueCode{
+		"id":        SchemaIssueCodeInvalidID,
+		"schemaId":  SchemaIssueCodeInvalidID,
+		"tableName": SchemaIssueCodeInvalidName,
+		"scannedAt": SchemaIssueCodeInvalidTime,
+		"updatedAt": SchemaIssueCodeInvalidTime,
+	})
+	assertAllIssuesSafeErrors(t, tableIssues)
+
+	columnIssues := ValidateColumn(DbColumn{
+		ID:              -1,
+		TableID:         -10,
+		OrdinalPosition: -1,
+		ColumnName:      "",
+		NativeType:      "\t",
+		LogicalType: ColumnLogicalType{
+			Kind:       ColumnLogicalKindUnknown,
+			NativeType: " ",
+		},
+	}, SchemaValidationModeDraft)
+	assertIssuePaths(t, columnIssues, []string{"id", "tableId", "ordinalPosition", "columnName", "nativeType", "logicalType.nativeType"})
+	assertIssueCodes(t, columnIssues, map[string]SchemaIssueCode{
+		"id":                     SchemaIssueCodeInvalidID,
+		"tableId":                SchemaIssueCodeInvalidID,
+		"ordinalPosition":        SchemaIssueCodeValidationFailed,
+		"columnName":             SchemaIssueCodeRequired,
+		"nativeType":             SchemaIssueCodeRequired,
+		"logicalType.nativeType": SchemaIssueCodeRequired,
+	})
+	assertAllIssuesSafeErrors(t, columnIssues)
+
+	constraintIssues := ValidateConstraint(TableConstraint{
+		ID:             0,
+		TableID:        10,
+		ConstraintName: "users_future_key",
+		ConstraintType: TableConstraintType("FOREIGN_KEY"),
+		ColumnIDs:      []int64{20, -1, 20, 0},
+	}, SchemaValidationModePersisted)
+	assertIssuePaths(t, constraintIssues, []string{"id", "constraintType", "columnIds", "columnIds", "createdAt"})
+	assertAllIssuesSafeErrors(t, constraintIssues)
+	if len(constraintIssues) != 5 {
+		t.Fatalf("ValidateConstraint should return all diagnosable boundary issues, got %#v", constraintIssues)
+	}
+	assertNoIssuePath(t, constraintIssues, "foreignKey")
+	assertNoIssuePath(t, constraintIssues, "referencedTableId")
+}
+
+func TestValidationBoundaryDoesNotImplementAggregateOrDatabaseBackedReferenceChecks(t *testing.T) {
+	constraint := TableConstraint{
+		TableID:        10,
+		ConstraintName: "users_email_key",
+		ConstraintType: TableConstraintTypeUnique,
+		ColumnIDs:      []int64{9999},
+	}
+	if issues := ValidateConstraint(constraint, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateConstraint should not verify column IDs against database or aggregate state, got %#v", issues)
+	}
+
+	column := DbColumn{
+		TableID:         9999,
+		OrdinalPosition: 1,
+		ColumnName:      "email",
+		NativeType:      "varchar(255)",
+		LogicalType:     ColumnLogicalType{Kind: ColumnLogicalKindString},
+	}
+	if issues := ValidateColumn(column, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateColumn should only require a positive tableId and not load parent table state, got %#v", issues)
+	}
+
+	table := DbTable{SchemaID: 9999, TableName: "users"}
+	if issues := ValidateTable(table, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateTable should only require a positive schemaId and not load parent schema state, got %#v", issues)
+	}
+}
+
+func TestTableFieldConstraintBoundaryDoesNotImportOrExposeOutOfScopeFeatures(t *testing.T) {
+	for _, typ := range []reflect.Type{reflect.TypeOf(DbTable{}), reflect.TypeOf(DbColumn{}), reflect.TypeOf(TableConstraint{}), reflect.TypeOf(ColumnLogicalType{})} {
+		for index := range typ.NumField() {
+			field := typ.Field(index)
+			fieldName := strings.ToLower(field.Name)
+			jsonName := strings.ToLower(strings.Split(field.Tag.Get("json"), ",")[0])
+
+			for _, forbidden := range []string{"service", "api", "ui", "wails", "vue", "execution", "engine", "driver", "foreign", "relation", "project", "check", "index"} {
+				if strings.Contains(fieldName, forbidden) || strings.Contains(jsonName, forbidden) {
+					t.Fatalf("%s.%s exposes out-of-scope field matching %q with json tag %q", typ.Name(), field.Name, forbidden, field.Tag.Get("json"))
+				}
+			}
+		}
+	}
+
+	for _, file := range schemaProductionFiles(t) {
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse imports for %s: %v", file, err)
+		}
+
+		for _, importSpec := range parsed.Imports {
+			importPath := strings.Trim(importSpec.Path.Value, "\"")
+			for _, forbidden := range []string{
+				"github.com/gerdong/loomidbx/internal/dbx",
+				"github.com/gerdong/loomidbx/internal/service",
+				"github.com/gerdong/loomidbx/internal/repository",
+				"github.com/gerdong/loomidbx/internal/storage",
+				"github.com/wailsapp/wails",
+				"database/sql",
+			} {
+				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
+					t.Fatalf("schema domain file %s imports out-of-scope package %q", file, importPath)
+				}
+			}
+		}
+	}
+}
+
 func TestTableFieldConstraintScaffoldSerializesStableJSONContracts(t *testing.T) {
 	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	defaultValue := "nextval('users_id_seq')"
@@ -557,4 +688,14 @@ func TestTableFieldConstraintScaffoldSerializesStableJSONContracts(t *testing.T)
 		CreatedAt:      createdAt,
 	}
 	assertJSONRoundTrip(t, "TableConstraint", constraint)
+}
+
+func assertNoIssuePath(t *testing.T, issues []SchemaValidationIssue, forbidden string) {
+	t.Helper()
+
+	for _, issue := range issues {
+		if issue.Path == forbidden {
+			t.Fatalf("unexpected issue path %q in %#v", forbidden, issues)
+		}
+	}
 }
