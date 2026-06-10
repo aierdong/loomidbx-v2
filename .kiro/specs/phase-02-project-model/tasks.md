@@ -16,7 +16,7 @@
   - _Boundary: ProjectModel_
   - _Depends: 1_
 
-- [ ] 2.2 (P) 实现 ProjectTable 表级配置合同
+- [x] 2.2 (P) 实现 ProjectTable 表级配置合同
   - 表达 Project 内目标表引用、可空行数、清空策略和执行顺序快照。
   - 明确 Project 采用两阶段创建，ProjectTable 只能引用已持久化 Project，`projectId` 必须大于 0。
   - 保留 `rowCount` 的 nil、0 和正数三种语义，不推导表角色矩阵。

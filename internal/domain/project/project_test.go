@@ -115,6 +115,133 @@ func TestProjectJSONLoadsDraftAndPersistedShapes(t *testing.T) {
 	}
 }
 
+func TestProjectTableExposesStableContractFields(t *testing.T) {
+	projectTableType := reflect.TypeOf(ProjectTable{})
+
+	assertProjectJSONTags(t, projectTableType, map[string]string{
+		"ID":             "id",
+		"ProjectID":      "projectId",
+		"TableID":        "tableId",
+		"RowCount":       "rowCount",
+		"TruncateBefore": "truncateBefore",
+		"ExecutionOrder": "executionOrder",
+		"CreatedAt":      "createdAt",
+		"UpdatedAt":      "updatedAt",
+	})
+	assertProjectStructJSONFieldSet(t, projectTableType, []string{"id", "projectId", "tableId", "rowCount", "truncateBefore", "executionOrder", "createdAt", "updatedAt"})
+
+	assertProjectFieldType(t, projectTableType, "ID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, projectTableType, "ProjectID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, projectTableType, "TableID", reflect.TypeOf(int64(0)))
+	assertProjectFieldType(t, projectTableType, "RowCount", reflect.TypeOf((*int)(nil)))
+	assertProjectFieldType(t, projectTableType, "TruncateBefore", reflect.TypeOf(false))
+	assertProjectFieldType(t, projectTableType, "ExecutionOrder", reflect.TypeOf(0))
+	assertProjectFieldType(t, projectTableType, "CreatedAt", reflect.TypeOf(time.Time{}))
+	assertProjectFieldType(t, projectTableType, "UpdatedAt", reflect.TypeOf(time.Time{}))
+}
+
+func TestProjectTableJSONRoundTripPreservesNullableRowCountStates(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 11, 15, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 10, 11, 45, 0, 0, time.UTC)
+	zeroRows := 0
+	positiveRows := 25
+
+	tests := []struct {
+		name            string
+		rowCount        *int
+		wantRawRowCount string
+	}{
+		{name: "nil means dynamically derived", rowCount: nil, wantRawRowCount: "null"},
+		{name: "zero means explicitly generate no rows", rowCount: &zeroRows, wantRawRowCount: "0"},
+		{name: "positive means explicit row target", rowCount: &positiveRows, wantRawRowCount: "25"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := ProjectTable{
+				ID:             301,
+				ProjectID:      101,
+				TableID:        202,
+				RowCount:       tt.rowCount,
+				TruncateBefore: false,
+				ExecutionOrder: 3,
+				CreatedAt:      createdAt,
+				UpdatedAt:      updatedAt,
+			}
+
+			encoded, err := json.Marshal(original)
+			if err != nil {
+				t.Fatalf("Marshal(ProjectTable) returned error: %v", err)
+			}
+
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatalf("Unmarshal encoded ProjectTable into field map returned error: %v", err)
+			}
+			assertProjectJSONFieldsPresent(t, fields, "id", "projectId", "tableId", "rowCount", "truncateBefore", "executionOrder", "createdAt", "updatedAt")
+			assertProjectJSONFieldsAbsent(t, fields, "project_id", "table_id", "row_count", "truncate_before", "execution_order", "fieldRules", "generatorConfig", "executionStatus", "runtimeState", "relations")
+			if got := string(fields["rowCount"]); got != tt.wantRawRowCount {
+				t.Fatalf("encoded rowCount = %s, want %s", got, tt.wantRawRowCount)
+			}
+
+			var decoded ProjectTable
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("Unmarshal(ProjectTable) returned error: %v", err)
+			}
+			if !reflect.DeepEqual(decoded, original) {
+				t.Fatalf("ProjectTable round trip = %#v, want %#v", decoded, original)
+			}
+		})
+	}
+}
+
+func TestProjectTableLoadsPersistedProjectReferenceAndFalseTruncate(t *testing.T) {
+	payload := `{"id":301,"projectId":101,"tableId":202,"rowCount":null,"truncateBefore":false,"executionOrder":3,"createdAt":"2026-06-10T11:15:00Z","updatedAt":"2026-06-10T11:45:00Z"}`
+
+	var decoded ProjectTable
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Fatalf("Unmarshal(ProjectTable) returned error: %v", err)
+	}
+
+	if decoded.ProjectID <= 0 {
+		t.Fatalf("ProjectTable.ProjectID = %d, want positive persisted Project reference", decoded.ProjectID)
+	}
+	if decoded.RowCount != nil {
+		t.Fatalf("ProjectTable.RowCount = %#v, want nil dynamic row count", decoded.RowCount)
+	}
+	if decoded.TruncateBefore {
+		t.Fatalf("ProjectTable.TruncateBefore = true, want false preserved from JSON")
+	}
+	if decoded.ExecutionOrder != 3 {
+		t.Fatalf("ProjectTable.ExecutionOrder = %d, want persisted snapshot 3", decoded.ExecutionOrder)
+	}
+}
+
+func TestProjectTableExcludesFieldRulesRelationsAndRuntimeState(t *testing.T) {
+	projectTableType := reflect.TypeOf(ProjectTable{})
+	for _, forbidden := range []string{
+		"TableRelationID",
+		"ParentProjectTableID",
+		"ChildProjectTableID",
+		"MultiplierMin",
+		"MultiplierMax",
+		"RelValueSource",
+		"RelSourceSQL",
+		"GeneratorConfig",
+		"FieldRules",
+		"GenerationRules",
+		"ExecutionStatus",
+		"RuntimeState",
+		"Status",
+		"Relations",
+		"RoleMatrix",
+	} {
+		if _, ok := projectTableType.FieldByName(forbidden); ok {
+			t.Fatalf("ProjectTable exposes later-task or out-of-scope field %s", forbidden)
+		}
+	}
+}
+
 func TestProjectAggregateRootExcludesLaterTaskContracts(t *testing.T) {
 	projectType := reflect.TypeOf(Project{})
 	for _, forbidden := range []string{
@@ -171,7 +298,8 @@ func TestProjectDomainScaffoldIsDiscoverableAndPure(t *testing.T) {
 
 func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 	allowedExportedTypes := map[string]bool{
-		"Project": true,
+		"Project":      true,
+		"ProjectTable": true,
 	}
 
 	files, err := filepath.Glob("*.go")
