@@ -28,7 +28,7 @@
   - _Boundary: DomainModels_
   - _Depends: 1.1_
 
-- [ ] 2.2 实现枚举、状态和值对象 (P)
+- [x] 2.2 实现枚举、状态和值对象 (P)
   - 实现 RelationType, RelationMultiplicity 相关枚举或值对象。
   - 枚举使用稳定字符串值，并能识别未知值。
   - 完成后，类型和状态可以安全序列化。

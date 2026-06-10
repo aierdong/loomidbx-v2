@@ -12,5 +12,8 @@ func ValidateTableRelation(relation TableRelation, mode SchemaValidationMode) []
 
 // ValidateRelationType exposes the relation-domain validation entry point for RelationType values.
 func ValidateRelationType(relationType RelationType) []SchemaValidationIssue {
-	return []SchemaValidationIssue{}
+	if relationType.IsKnown() {
+		return nil
+	}
+	return []SchemaValidationIssue{schemaValidationIssue("relationType", SchemaIssueCodeInvalidType, "relationType must be PARENT_CHILD or JOIN_TABLE")}
 }

@@ -26,6 +26,12 @@ const (
 
 	// SchemaIssueCodeInvalidIdentity reports an incomplete or inconsistent schema identity value object.
 	SchemaIssueCodeInvalidIdentity SchemaIssueCode = "SCHEMA_INVALID_IDENTITY"
+
+	// SchemaIssueCodeInvalidType reports an unsupported schema domain enum or type discriminator value.
+	SchemaIssueCodeInvalidType SchemaIssueCode = "SCHEMA_INVALID_TYPE"
+
+	// SchemaIssueCodeInvalidRange reports an invalid numeric range in a schema domain value object.
+	SchemaIssueCodeInvalidRange SchemaIssueCode = "SCHEMA_INVALID_RANGE"
 )
 
 // IsKnown reports whether the schema issue code belongs to the stable schema domain issue-code set.
@@ -36,7 +42,9 @@ func (c SchemaIssueCode) IsKnown() bool {
 		SchemaIssueCodeInvalidID,
 		SchemaIssueCodeInvalidName,
 		SchemaIssueCodeInvalidTime,
-		SchemaIssueCodeInvalidIdentity:
+		SchemaIssueCodeInvalidIdentity,
+		SchemaIssueCodeInvalidType,
+		SchemaIssueCodeInvalidRange:
 		return true
 	default:
 		return false
