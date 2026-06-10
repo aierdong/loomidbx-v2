@@ -238,11 +238,53 @@ func isSchemaJSONPath(path string) bool {
 	}
 	segments := strings.Split(path, ".")
 	for _, segment := range segments {
-		if !isLowerCamelJSONFieldName(segment) {
+		if !isLowerCamelJSONPathSegment(segment) {
 			return false
 		}
 	}
 	return true
+}
+
+func isLowerCamelJSONPathSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+
+	fieldEnd := strings.IndexByte(segment, '[')
+	if fieldEnd == -1 {
+		return isLowerCamelJSONFieldName(segment)
+	}
+	if fieldEnd == 0 || !isIndexedSchemaJSONFieldName(segment[:fieldEnd]) {
+		return false
+	}
+
+	indexStart := fieldEnd
+	for indexStart < len(segment) {
+		if segment[indexStart] != '[' {
+			return false
+		}
+		indexEnd := strings.IndexByte(segment[indexStart:], ']')
+		if indexEnd <= 1 {
+			return false
+		}
+		indexEnd += indexStart
+		for _, r := range segment[indexStart+1 : indexEnd] {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+		indexStart = indexEnd + 1
+	}
+	return true
+}
+
+func isIndexedSchemaJSONFieldName(name string) bool {
+	switch name {
+	case "columnIds", "referencedColumnIds", "parentColumnIds", "childColumnIds":
+		return true
+	default:
+		return false
+	}
 }
 
 func isLowerCamelJSONFieldName(name string) bool {
