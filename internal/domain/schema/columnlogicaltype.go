@@ -1,5 +1,7 @@
 package schema
 
+import "encoding/json"
+
 // ColumnLogicalKind identifies the stable logical type category for a database column.
 type ColumnLogicalKind string
 
@@ -49,6 +51,56 @@ const (
 	// ColumnLogicalKindEnum represents enumerated string values.
 	ColumnLogicalKindEnum ColumnLogicalKind = "enum"
 )
+
+// IsKnown reports whether the logical kind belongs to the stable supported set.
+func (kind ColumnLogicalKind) IsKnown() bool {
+	switch kind {
+	case ColumnLogicalKindUnknown,
+		ColumnLogicalKindString,
+		ColumnLogicalKindText,
+		ColumnLogicalKindInteger,
+		ColumnLogicalKindDecimal,
+		ColumnLogicalKindFloat,
+		ColumnLogicalKindBoolean,
+		ColumnLogicalKindDate,
+		ColumnLogicalKindTime,
+		ColumnLogicalKindDateTime,
+		ColumnLogicalKindBinary,
+		ColumnLogicalKindJSON,
+		ColumnLogicalKindUUID,
+		ColumnLogicalKindArray,
+		ColumnLogicalKindEnum:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsUnknown reports whether the logical kind is outside the stable supported set.
+func (kind ColumnLogicalKind) IsUnknown() bool {
+	return !kind.IsKnown()
+}
+
+// String returns the stable string representation used for persistence and transport.
+func (kind ColumnLogicalKind) String() string {
+	return string(kind)
+}
+
+// MarshalJSON serializes the logical kind as its stable string value.
+func (kind ColumnLogicalKind) MarshalJSON() ([]byte, error) {
+	return json.Marshal(kind.String())
+}
+
+// UnmarshalJSON restores the logical kind from its serialized string value.
+func (kind *ColumnLogicalKind) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	*kind = ColumnLogicalKind(value)
+	return nil
+}
 
 // ColumnLogicalType describes stable logical type metadata for downstream field rules and generators.
 type ColumnLogicalType struct {

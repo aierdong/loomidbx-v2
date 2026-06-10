@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -104,6 +105,105 @@ func TestTableFieldConstraintScaffoldDeclaresStableEnums(t *testing.T) {
 		if want := expected[name]; got != want {
 			t.Fatalf("%s = %q, want %q", name, got, want)
 		}
+	}
+
+	for _, known := range []TableConstraintType{TableConstraintTypePrimary, TableConstraintTypeUnique} {
+		if !known.IsKnown() {
+			t.Fatalf("%q should be recognized as known", known)
+		}
+		if known.IsUnknown() {
+			t.Fatalf("%q should not be recognized as unknown", known)
+		}
+	}
+
+	unknownConstraint := TableConstraintType("FOREIGN_KEY")
+	if unknownConstraint.IsKnown() {
+		t.Fatalf("%q should not be recognized as known", unknownConstraint)
+	}
+	if !unknownConstraint.IsUnknown() {
+		t.Fatalf("%q should be recognized as unknown", unknownConstraint)
+	}
+
+	for _, known := range []ColumnLogicalKind{
+		ColumnLogicalKindUnknown,
+		ColumnLogicalKindString,
+		ColumnLogicalKindText,
+		ColumnLogicalKindInteger,
+		ColumnLogicalKindDecimal,
+		ColumnLogicalKindFloat,
+		ColumnLogicalKindBoolean,
+		ColumnLogicalKindDate,
+		ColumnLogicalKindTime,
+		ColumnLogicalKindDateTime,
+		ColumnLogicalKindBinary,
+		ColumnLogicalKindJSON,
+		ColumnLogicalKindUUID,
+		ColumnLogicalKindArray,
+		ColumnLogicalKindEnum,
+	} {
+		if !known.IsKnown() {
+			t.Fatalf("%q should be recognized as known", known)
+		}
+		if known.IsUnknown() {
+			t.Fatalf("%q should not be recognized as unknown", known)
+		}
+	}
+
+	unknownKind := ColumnLogicalKind("geometry")
+	if unknownKind.IsKnown() {
+		t.Fatalf("%q should not be recognized as known", unknownKind)
+	}
+	if !unknownKind.IsUnknown() {
+		t.Fatalf("%q should be recognized as unknown", unknownKind)
+	}
+}
+
+func TestDomainEnumJSONPreservesUnknownStringsAndRejectsNonStrings(t *testing.T) {
+	var constraintType TableConstraintType
+	if err := json.Unmarshal([]byte(`"CHECK"`), &constraintType); err != nil {
+		t.Fatalf("Unmarshal unknown TableConstraintType returned error: %v", err)
+	}
+	if constraintType != TableConstraintType("CHECK") || !constraintType.IsUnknown() {
+		t.Fatalf("unknown TableConstraintType = %q, IsUnknown=%v; want preserved unknown", constraintType, constraintType.IsUnknown())
+	}
+	encodedConstraintType, err := json.Marshal(constraintType)
+	if err != nil {
+		t.Fatalf("Marshal unknown TableConstraintType returned error: %v", err)
+	}
+	if string(encodedConstraintType) != `"CHECK"` {
+		t.Fatalf("unknown TableConstraintType JSON = %s, want %q", encodedConstraintType, `"CHECK"`)
+	}
+
+	var logicalKind ColumnLogicalKind
+	if err := json.Unmarshal([]byte(`"geometry"`), &logicalKind); err != nil {
+		t.Fatalf("Unmarshal unknown ColumnLogicalKind returned error: %v", err)
+	}
+	if logicalKind != ColumnLogicalKind("geometry") || !logicalKind.IsUnknown() {
+		t.Fatalf("unknown ColumnLogicalKind = %q, IsUnknown=%v; want preserved unknown", logicalKind, logicalKind.IsUnknown())
+	}
+	encodedLogicalKind, err := json.Marshal(logicalKind)
+	if err != nil {
+		t.Fatalf("Marshal unknown ColumnLogicalKind returned error: %v", err)
+	}
+	if string(encodedLogicalKind) != `"geometry"` {
+		t.Fatalf("unknown ColumnLogicalKind JSON = %s, want %q", encodedLogicalKind, `"geometry"`)
+	}
+
+	for name, decode := range map[string]func() error{
+		"constraint type number": func() error {
+			var decoded TableConstraintType
+			return json.Unmarshal([]byte(`1`), &decoded)
+		},
+		"logical kind object": func() error {
+			var decoded ColumnLogicalKind
+			return json.Unmarshal([]byte(`{"kind":"string"}`), &decoded)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := decode(); err == nil {
+				t.Fatalf("enum unmarshal should reject non-string JSON for %s", name)
+			}
+		})
 	}
 }
 

@@ -1,6 +1,9 @@
 package schema
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // TableConstraintType identifies the stable table-level constraint category supported by this domain boundary.
 type TableConstraintType string
@@ -12,6 +15,43 @@ const (
 	// TableConstraintTypeUnique represents a UNIQUE constraint over one or more ordered columns.
 	TableConstraintTypeUnique TableConstraintType = "UNIQUE"
 )
+
+// IsKnown reports whether the table constraint type belongs to the stable supported set.
+func (constraintType TableConstraintType) IsKnown() bool {
+	switch constraintType {
+	case TableConstraintTypePrimary,
+		TableConstraintTypeUnique:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsUnknown reports whether the table constraint type is outside the stable supported set.
+func (constraintType TableConstraintType) IsUnknown() bool {
+	return !constraintType.IsKnown()
+}
+
+// String returns the stable string representation used for persistence and transport.
+func (constraintType TableConstraintType) String() string {
+	return string(constraintType)
+}
+
+// MarshalJSON serializes the table constraint type as its stable string value.
+func (constraintType TableConstraintType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(constraintType.String())
+}
+
+// UnmarshalJSON restores the table constraint type from its serialized string value.
+func (constraintType *TableConstraintType) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	*constraintType = TableConstraintType(value)
+	return nil
+}
 
 // TableConstraint represents a PRIMARY or UNIQUE table-level constraint with ordered column references.
 type TableConstraint struct {
