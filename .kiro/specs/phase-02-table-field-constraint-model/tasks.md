@@ -1,7 +1,7 @@
 # Implementation Plan
 
-- [ ] 0. 执行上游规格前置门禁
-- [ ] 0.1 确认 `phase-02-database-schema-model` 已完成并提供上游类型
+- [x] 0. 执行上游规格前置门禁
+- [x] 0.1 确认 `phase-02-database-schema-model` 已完成并提供上游类型
   - 检查上游规格任务必须已经完成，且 `internal/domain/schema` 中已存在 `DbSchema` 相关基础模型。
   - 检查 `internal/domain/schema` 中已存在 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode`。
   - 如果上游任务未完成，或任一上游类型不存在，则当前规格实现必须拒绝继续并停止；不得在本规格中创建临时兼容类型或重复声明同名类型。
