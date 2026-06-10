@@ -403,6 +403,118 @@ func TestValidateLogicalTypeAppliesEnumRangeAndSingleObjectUniquenessRules(t *te
 	assertIssuePaths(t, arrayIssues, []string{"element"})
 }
 
+func TestTableFieldConstraintMissingOptionalFieldsDecodeToCompatibleDefaults(t *testing.T) {
+	var table DbTable
+	if err := json.Unmarshal([]byte(`{"id":1,"schemaId":2,"tableName":"users"}`), &table); err != nil {
+		t.Fatalf("Unmarshal minimal DbTable returned error: %v", err)
+	}
+	if table.ID != 1 || table.SchemaID != 2 || table.TableName != "users" {
+		t.Fatalf("decoded minimal table = %#v, want stable required fields", table)
+	}
+	if table.Comment != "" || table.DDLSnapshot != "" || table.ScannedAt != nil || !table.CreatedAt.IsZero() || !table.UpdatedAt.IsZero() {
+		t.Fatalf("missing optional table fields should decode to compatible zero values: %#v", table)
+	}
+
+	var column DbColumn
+	if err := json.Unmarshal([]byte(`{"id":3,"tableId":1,"ordinalPosition":1,"columnName":"email","nativeType":"varchar(255)","logicalType":{"kind":"string"}}`), &column); err != nil {
+		t.Fatalf("Unmarshal minimal DbColumn returned error: %v", err)
+	}
+	if column.ID != 3 || column.TableID != 1 || column.OrdinalPosition != 1 || column.ColumnName != "email" || column.NativeType != "varchar(255)" {
+		t.Fatalf("decoded minimal column = %#v, want stable required fields", column)
+	}
+	if column.Nullable || column.IsPrimaryKey || column.DefaultValue != nil || column.Comment != "" || !column.CreatedAt.IsZero() || !column.UpdatedAt.IsZero() {
+		t.Fatalf("missing optional column fields should decode compatibly: %#v", column)
+	}
+	if column.LogicalType.Kind != ColumnLogicalKindString || column.LogicalType.Length != nil || column.LogicalType.EnumValues != nil {
+		t.Fatalf("decoded minimal logical type = %#v, want string kind with nil optional metadata", column.LogicalType)
+	}
+
+	var logical ColumnLogicalType
+	if err := json.Unmarshal([]byte(`{"kind":"unknown","nativeType":"citext"}`), &logical); err != nil {
+		t.Fatalf("Unmarshal minimal ColumnLogicalType returned error: %v", err)
+	}
+	if logical.Kind != ColumnLogicalKindUnknown || logical.NativeType != "citext" || logical.Timezone {
+		t.Fatalf("decoded minimal logical type = %#v, want unknown citext without timezone", logical)
+	}
+	if logical.Length != nil || logical.Precision != nil || logical.Scale != nil || logical.BitWidth != nil || logical.Element != nil || logical.EnumValues != nil {
+		t.Fatalf("missing optional logical metadata should decode to nil values: %#v", logical)
+	}
+
+	var constraint TableConstraint
+	if err := json.Unmarshal([]byte(`{"id":4,"tableId":1,"constraintName":"users_email_key","constraintType":"UNIQUE","columnIds":[3]}`), &constraint); err != nil {
+		t.Fatalf("Unmarshal minimal TableConstraint returned error: %v", err)
+	}
+	if constraint.ID != 4 || constraint.TableID != 1 || constraint.ConstraintName != "users_email_key" || constraint.ConstraintType != TableConstraintTypeUnique || !reflect.DeepEqual(constraint.ColumnIDs, []int64{3}) {
+		t.Fatalf("decoded minimal constraint = %#v, want stable required fields", constraint)
+	}
+	if !constraint.CreatedAt.IsZero() {
+		t.Fatalf("missing constraint createdAt should decode to zero value, got %v", constraint.CreatedAt)
+	}
+}
+
+func TestTableFieldConstraintKnownEnumsSerializeStableStrings(t *testing.T) {
+	constraintTypes := map[TableConstraintType]string{
+		TableConstraintTypePrimary: "PRIMARY",
+		TableConstraintTypeUnique:  "UNIQUE",
+	}
+	for enumValue, expected := range constraintTypes {
+		if got := enumValue.String(); got != expected {
+			t.Fatalf("TableConstraintType.String() = %q, want %q", got, expected)
+		}
+		encoded, err := json.Marshal(enumValue)
+		if err != nil {
+			t.Fatalf("Marshal(%q) returned error: %v", enumValue, err)
+		}
+		if string(encoded) != `"`+expected+`"` {
+			t.Fatalf("Marshal(%q) = %s, want quoted stable enum string %q", enumValue, encoded, expected)
+		}
+		var decoded TableConstraintType
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatalf("Unmarshal(%s) returned error: %v", encoded, err)
+		}
+		if decoded != enumValue || !decoded.IsKnown() {
+			t.Fatalf("decoded constraint type = %q known=%v, want %q known", decoded, decoded.IsKnown(), enumValue)
+		}
+	}
+
+	logicalKinds := map[ColumnLogicalKind]string{
+		ColumnLogicalKindUnknown:  "unknown",
+		ColumnLogicalKindString:   "string",
+		ColumnLogicalKindText:     "text",
+		ColumnLogicalKindInteger:  "integer",
+		ColumnLogicalKindDecimal:  "decimal",
+		ColumnLogicalKindFloat:    "float",
+		ColumnLogicalKindBoolean:  "boolean",
+		ColumnLogicalKindDate:     "date",
+		ColumnLogicalKindTime:     "time",
+		ColumnLogicalKindDateTime: "datetime",
+		ColumnLogicalKindBinary:   "binary",
+		ColumnLogicalKindJSON:     "json",
+		ColumnLogicalKindUUID:     "uuid",
+		ColumnLogicalKindArray:    "array",
+		ColumnLogicalKindEnum:     "enum",
+	}
+	for enumValue, expected := range logicalKinds {
+		if got := enumValue.String(); got != expected {
+			t.Fatalf("ColumnLogicalKind.String() = %q, want %q", got, expected)
+		}
+		encoded, err := json.Marshal(enumValue)
+		if err != nil {
+			t.Fatalf("Marshal(%q) returned error: %v", enumValue, err)
+		}
+		if string(encoded) != `"`+expected+`"` {
+			t.Fatalf("Marshal(%q) = %s, want quoted stable enum string %q", enumValue, encoded, expected)
+		}
+		var decoded ColumnLogicalKind
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatalf("Unmarshal(%s) returned error: %v", encoded, err)
+		}
+		if decoded != enumValue || !decoded.IsKnown() {
+			t.Fatalf("decoded logical kind = %q known=%v, want %q known", decoded, decoded.IsKnown(), enumValue)
+		}
+	}
+}
+
 func TestTableFieldConstraintScaffoldSerializesStableJSONContracts(t *testing.T) {
 	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	defaultValue := "nextval('users_id_seq')"
