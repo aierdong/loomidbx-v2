@@ -35,7 +35,7 @@
   - _Boundary: DomainEnums_
   - _Depends: 1.1_
 
-- [ ] 3. 实现基础校验
+- [x] 3. 实现基础校验
 - [x] 3.1 复用上游字段级校验错误结构
   - 复用上游 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode`，不得重新定义同名类型。
   - 仅当现有 `SchemaIssueCode` 无法表达表/字段/约束错误时，才在既有类型上追加必要常量。
@@ -46,7 +46,7 @@
   - _Boundary: Validation_
   - _Depends: 2.1, 2.2_
 
-- [ ] 3.2 实现模型校验规则
+- [x] 3.2 实现模型校验规则
   - 覆盖必填字段、父级引用、枚举合法性、范围和唯一性规则。
   - 不访问数据库、执行引擎或 UI 状态。
   - 完成后，无效模型返回可诊断且安全的错误集合。

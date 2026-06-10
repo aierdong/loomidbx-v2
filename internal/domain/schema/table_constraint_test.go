@@ -213,7 +213,12 @@ func TestTableValidationReusesUpstreamStructuredIssuesAndReturnsMultipleProblems
 	var _ []SchemaValidationIssue = ValidateConstraint(TableConstraint{}, SchemaValidationModeDraft)
 	var _ []SchemaValidationIssue = ValidateLogicalType(ColumnLogicalType{})
 
-	issues := ValidateConstraint(TableConstraint{ConstraintType: TableConstraintType("CHECK")}, SchemaValidationMode("runtime"))
+	issues := ValidateConstraint(TableConstraint{
+		TableID:        10,
+		ConstraintName: "users_email_key",
+		ConstraintType: TableConstraintType("CHECK"),
+		ColumnIDs:      []int64{20},
+	}, SchemaValidationMode("runtime"))
 
 	assertIssuePaths(t, issues, []string{"mode", "constraintType"})
 	assertIssueCodes(t, issues, map[string]SchemaIssueCode{
@@ -226,6 +231,176 @@ func TestTableValidationReusesUpstreamStructuredIssuesAndReturnsMultipleProblems
 			t.Fatalf("table validation issue does not satisfy upstream issue contract: %#v produced %#v", issue, contractIssues)
 		}
 	}
+}
+
+func TestValidateTableAppliesRequiredParentRangeAndAuditRules(t *testing.T) {
+	if issues := ValidateTable(DbTable{SchemaID: 5, TableName: "users"}, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateTable(valid draft) = %#v, want no issues", issues)
+	}
+
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Second)
+	zeroScannedAt := time.Time{}
+	issues := ValidateTable(DbTable{
+		ID:        -1,
+		SchemaID:  0,
+		TableName: " /bad",
+		ScannedAt: &zeroScannedAt,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"id", "schemaId", "tableName", "scannedAt", "updatedAt"})
+	assertIssueCodes(t, issues, map[string]SchemaIssueCode{
+		"id":        SchemaIssueCodeInvalidID,
+		"schemaId":  SchemaIssueCodeInvalidID,
+		"tableName": SchemaIssueCodeInvalidName,
+		"scannedAt": SchemaIssueCodeInvalidTime,
+		"updatedAt": SchemaIssueCodeInvalidTime,
+	})
+	assertAllIssuesSafeErrors(t, issues)
+
+	invalidModeIssues := ValidateTable(DbTable{SchemaID: 0, TableName: ""}, SchemaValidationMode("runtime"))
+	assertIssuePaths(t, invalidModeIssues, []string{"mode", "schemaId", "tableName"})
+
+	persistedIssues := ValidateTable(DbTable{SchemaID: 5, TableName: "users"}, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "createdAt", "updatedAt"})
+}
+
+func TestValidateColumnAppliesRequiredParentEnumRangeAndAuditRules(t *testing.T) {
+	if issues := ValidateColumn(DbColumn{
+		TableID:         10,
+		OrdinalPosition: 1,
+		ColumnName:      "email",
+		NativeType:      "varchar(255)",
+		LogicalType:     ColumnLogicalType{Kind: ColumnLogicalKindString},
+	}, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateColumn(valid draft) = %#v, want no issues", issues)
+	}
+
+	issues := ValidateColumn(DbColumn{
+		ID:              -1,
+		TableID:         0,
+		OrdinalPosition: 0,
+		ColumnName:      "bad/name",
+		NativeType:      "   ",
+		LogicalType:     ColumnLogicalType{Kind: ColumnLogicalKind("geometry")},
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"id", "tableId", "ordinalPosition", "columnName", "nativeType", "logicalType.kind"})
+	assertIssueCodes(t, issues, map[string]SchemaIssueCode{
+		"id":               SchemaIssueCodeInvalidID,
+		"tableId":          SchemaIssueCodeInvalidID,
+		"ordinalPosition":  SchemaIssueCodeValidationFailed,
+		"columnName":       SchemaIssueCodeInvalidName,
+		"nativeType":       SchemaIssueCodeRequired,
+		"logicalType.kind": SchemaIssueCodeValidationFailed,
+	})
+	assertAllIssuesSafeErrors(t, issues)
+
+	invalidModeIssues := ValidateColumn(DbColumn{
+		TableID:         0,
+		OrdinalPosition: 0,
+		ColumnName:      "",
+		NativeType:      "",
+		LogicalType:     ColumnLogicalType{Kind: ColumnLogicalKind("geometry")},
+	}, SchemaValidationMode("runtime"))
+	assertIssuePaths(t, invalidModeIssues, []string{"mode", "tableId", "ordinalPosition", "columnName", "nativeType", "logicalType.kind"})
+
+	persistedIssues := ValidateColumn(DbColumn{
+		TableID:         10,
+		OrdinalPosition: 1,
+		ColumnName:      "email",
+		NativeType:      "varchar(255)",
+		LogicalType:     ColumnLogicalType{Kind: ColumnLogicalKindString},
+	}, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "createdAt", "updatedAt"})
+}
+
+func TestValidateConstraintAppliesRequiredParentEnumRangeAndInternalUniquenessRules(t *testing.T) {
+	if issues := ValidateConstraint(TableConstraint{
+		TableID:        10,
+		ConstraintName: "users_email_key",
+		ConstraintType: TableConstraintTypeUnique,
+		ColumnIDs:      []int64{20},
+	}, SchemaValidationModeDraft); len(issues) != 0 {
+		t.Fatalf("ValidateConstraint(valid draft) = %#v, want no issues", issues)
+	}
+
+	issues := ValidateConstraint(TableConstraint{
+		ID:             -1,
+		TableID:        0,
+		ConstraintName: "",
+		ConstraintType: TableConstraintType("CHECK"),
+		ColumnIDs:      []int64{0, 20, 20},
+	}, SchemaValidationModeDraft)
+
+	assertIssuePaths(t, issues, []string{"id", "tableId", "constraintName", "constraintType", "columnIds", "columnIds"})
+	assertAllIssuesSafeErrors(t, issues)
+
+	emptyColumnIssues := ValidateConstraint(TableConstraint{
+		TableID:        10,
+		ConstraintName: "users_email_key",
+		ConstraintType: TableConstraintTypeUnique,
+	}, SchemaValidationModeDraft)
+	assertIssuePaths(t, emptyColumnIssues, []string{"columnIds"})
+	assertIssueCodes(t, emptyColumnIssues, map[string]SchemaIssueCode{"columnIds": SchemaIssueCodeRequired})
+
+	persistedIssues := ValidateConstraint(TableConstraint{
+		TableID:        10,
+		ConstraintName: "users_email_key",
+		ConstraintType: TableConstraintTypeUnique,
+		ColumnIDs:      []int64{20},
+	}, SchemaValidationModePersisted)
+	assertIssuePaths(t, persistedIssues, []string{"id", "createdAt"})
+}
+
+func TestValidateLogicalTypeAppliesEnumRangeAndSingleObjectUniquenessRules(t *testing.T) {
+	length := int64(1)
+	precision := 2
+	scale := 1
+	bitWidth := 32
+	if issues := ValidateLogicalType(ColumnLogicalType{
+		Kind:       ColumnLogicalKindDecimal,
+		Length:     &length,
+		Precision:  &precision,
+		Scale:      &scale,
+		BitWidth:   &bitWidth,
+		NativeType: "numeric(2,1)",
+	}); len(issues) != 0 {
+		t.Fatalf("ValidateLogicalType(valid decimal) = %#v, want no issues", issues)
+	}
+
+	zeroLength := int64(0)
+	zeroPrecision := 0
+	largeScale := 3
+	zeroBitWidth := 0
+	issues := ValidateLogicalType(ColumnLogicalType{
+		Kind:      ColumnLogicalKind("geometry"),
+		Length:    &zeroLength,
+		Precision: &zeroPrecision,
+		Scale:     &largeScale,
+		BitWidth:  &zeroBitWidth,
+	})
+	assertIssuePaths(t, issues, []string{"kind", "length", "precision", "bitWidth"})
+	assertAllIssuesSafeErrors(t, issues)
+
+	precisionTwo := 2
+	scaleThree := 3
+	scaleIssues := ValidateLogicalType(ColumnLogicalType{Kind: ColumnLogicalKindDecimal, Precision: &precisionTwo, Scale: &scaleThree})
+	assertIssuePaths(t, scaleIssues, []string{"scale"})
+
+	unknownIssues := ValidateLogicalType(ColumnLogicalType{Kind: ColumnLogicalKindUnknown, NativeType: "   "})
+	assertIssuePaths(t, unknownIssues, []string{"nativeType"})
+
+	emptyEnumIssues := ValidateLogicalType(ColumnLogicalType{Kind: ColumnLogicalKindEnum})
+	assertIssuePaths(t, emptyEnumIssues, []string{"enumValues"})
+
+	duplicateEnumIssues := ValidateLogicalType(ColumnLogicalType{Kind: ColumnLogicalKindEnum, EnumValues: []string{"small", " ", "small"}})
+	assertIssuePaths(t, duplicateEnumIssues, []string{"enumValues", "enumValues"})
+
+	arrayIssues := ValidateLogicalType(ColumnLogicalType{Kind: ColumnLogicalKindArray})
+	assertIssuePaths(t, arrayIssues, []string{"element"})
 }
 
 func TestTableFieldConstraintScaffoldSerializesStableJSONContracts(t *testing.T) {
