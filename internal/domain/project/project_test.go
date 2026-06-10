@@ -871,6 +871,136 @@ func TestValidateProjectTablesReturnsDuplicateTableReferencesWithinSameProject(t
 	})
 }
 
+func TestValidationBoundaryCoversRequiredPresenceAndRuleFailures(t *testing.T) {
+	t.Run("project table required presence reports every missing field", func(t *testing.T) {
+		_, issues, err := DecodeProjectTableJSON([]byte(`{}`), false)
+		if err != nil {
+			t.Fatalf("DecodeProjectTableJSON returned error: %v", err)
+		}
+		assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+			{path: "projectTable.id", code: ProjectIssueCodeRequired},
+			{path: "projectTable.projectId", code: ProjectIssueCodeRequired},
+			{path: "projectTable.tableId", code: ProjectIssueCodeRequired},
+			{path: "projectTable.rowCount", code: ProjectIssueCodeRequired},
+			{path: "projectTable.truncateBefore", code: ProjectIssueCodeRequired},
+			{path: "projectTable.executionOrder", code: ProjectIssueCodeRequired},
+		})
+	})
+
+	t.Run("project table relation required presence reports nullable and enum fields", func(t *testing.T) {
+		_, issues, err := DecodeProjectTableRelationJSON([]byte(`{}`), false)
+		if err != nil {
+			t.Fatalf("DecodeProjectTableRelationJSON returned error: %v", err)
+		}
+		assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+			{path: "projectTableRelation.id", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.projectId", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.tableRelationId", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.childProjectTableId", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.multiplierMin", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.multiplierMax", code: ProjectIssueCodeRequired},
+			{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeRequired},
+		})
+	})
+
+	t.Run("invalid references ranges enum sql parent and duplicate table are stable", func(t *testing.T) {
+		invalidParentID := int64(0)
+		relationIssues := ValidateProjectTableRelation(ProjectTableRelation{
+			ProjectID:            -1,
+			TableRelationID:      0,
+			ParentProjectTableID: &invalidParentID,
+			ChildProjectTableID:  0,
+			MultiplierMin:        3,
+			MultiplierMax:        2,
+			RelValueSource:       RelationValueSource("OUTSIDE_CONTRACT"),
+		}, false)
+		assertProjectValidationIssueCodes(t, relationIssues, []projectIssuePathCode{
+			{path: "projectTableRelation.projectId", code: ProjectIssueCodeInvalidID},
+			{path: "projectTableRelation.tableRelationId", code: ProjectIssueCodeInvalidID},
+			{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeInvalidID},
+			{path: "projectTableRelation.childProjectTableId", code: ProjectIssueCodeInvalidID},
+			{path: "projectTableRelation.multiplierMax", code: ProjectIssueCodeInvalidRange},
+			{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeInvalidEnum},
+		})
+
+		mergedIssues := ValidateProjectTableRelation(ProjectTableRelation{
+			ProjectID:           1,
+			TableRelationID:     2,
+			ChildProjectTableID: 3,
+			MultiplierMin:       0,
+			MultiplierMax:       1,
+			RelValueSource:      RelationValueSourceMerged,
+			RelSourceSQL:        " ",
+		}, false)
+		assertProjectValidationIssueCodes(t, mergedIssues, []projectIssuePathCode{
+			{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeParentRequired},
+			{path: "projectTableRelation.relSourceSql", code: ProjectIssueCodeSQLRequired},
+		})
+
+		duplicateIssues := ValidateProjectTables([]ProjectTable{
+			{ProjectID: 1, TableID: 10, ExecutionOrder: 1},
+			{ProjectID: 1, TableID: 10, ExecutionOrder: 2},
+		}, false)
+		assertProjectValidationIssueCodes(t, duplicateIssues, []projectIssuePathCode{
+			{path: "tables[1].tableId", code: ProjectIssueCodeDuplicateTable},
+		})
+	})
+}
+
+func TestProjectPackageBoundaryDoesNotExposeServiceAPIUIOrRuntimeCapabilities(t *testing.T) {
+	forbiddenIdentifiers := map[string]string{
+		"ProjectService":       "service boundary",
+		"ProjectAPI":           "API boundary",
+		"ProjectUI":            "UI boundary",
+		"ProjectRepository":    "store boundary",
+		"ProjectStore":         "store boundary",
+		"ProjectEngine":        "engine boundary",
+		"ProjectGenerator":     "generator boundary",
+		"GeneratorConfig":      "field-rule boundary",
+		"FieldRule":            "field-rule boundary",
+		"FieldRules":           "field-rule boundary",
+		"ExecutionPlan":        "execution algorithm boundary",
+		"ExecutionTask":        "runtime state boundary",
+		"GenerationJob":        "runtime state boundary",
+		"RuntimeState":         "runtime state boundary",
+		"ExecuteSQL":           "database access boundary",
+		"QuerySQL":             "database access boundary",
+		"TopologicalSort":      "execution algorithm boundary",
+		"BuildExecutionPlan":   "execution algorithm boundary",
+		"CalculateRowCounts":   "execution algorithm boundary",
+		"ResolveRelationGraph": "execution algorithm boundary",
+	}
+
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob project package files: %v", err)
+	}
+
+	fset := token.NewFileSet()
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+
+		parsed, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", file, err)
+		}
+
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			identifier, ok := node.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if boundary, forbidden := forbiddenIdentifiers[identifier.Name]; forbidden {
+				t.Fatalf("%s contains out-of-scope %s identifier %q", file, boundary, identifier.Name)
+			}
+			return true
+		})
+	}
+}
+
 func TestProjectTableRelationExcludesExecutionAlgorithmsAndRuntimeState(t *testing.T) {
 	relationType := reflect.TypeOf(ProjectTableRelation{})
 	for _, forbidden := range []string{

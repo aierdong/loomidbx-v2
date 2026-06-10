@@ -68,7 +68,7 @@
   - _Boundary: SerializationTests_
   - _Depends: 2.1, 2.2, 2.3_
 
-- [ ] 4.2 覆盖校验、presence 和 out-of-scope 边界测试
+- [x] 4.2 覆盖校验、presence 和 out-of-scope 边界测试
   - 覆盖多错误返回、必填字段缺失、非法引用形状、非法范围、非法枚举、SQL_REQUIRED、PARENT_REQUIRED 和重复表引用。
   - 覆盖 Project 包未吸收服务、API、UI、数据库访问、执行算法、字段规则或运行时状态。
   - 完成后，当前规格所有基础校验和边界承诺都有可执行测试保护。
