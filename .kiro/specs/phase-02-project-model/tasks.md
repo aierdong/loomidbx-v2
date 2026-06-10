@@ -43,7 +43,7 @@
   - _Boundary: ProjectValidation_
   - _Depends: 2.1, 2.2, 2.3_
 
-- [ ] 3.2 实现模型基础校验规则
+- [x] 3.2 实现模型基础校验规则
   - 覆盖 ID 形状、Project 两阶段创建约束、必填字符串、控制字符、时间顺序、行数、执行顺序、倍数范围和枚举合法性。
   - 覆盖 `relValueSource`、`relSourceSql` 与 `parentProjectTableId` 的组合规则，以及同一 Project 中重复表引用的集合级检查。
   - 完成后，无效 Project、ProjectTable 和 ProjectTableRelation 会返回稳定字段路径和错误码，不访问外部资源。

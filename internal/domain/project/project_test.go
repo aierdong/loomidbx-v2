@@ -505,6 +505,204 @@ func TestProjectValidationIssueMessagesDoNotEchoSensitiveSQL(t *testing.T) {
 	}
 }
 
+func TestValidateProjectReturnsStableFieldPathsAndCodes(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+	issues := ValidateProject(Project{
+		ID:           -1,
+		ConnectionID: 0,
+		Name:         " \t ",
+		Description:  "contains\x00control",
+		CreatedAt:    createdAt,
+		UpdatedAt:    updatedAt,
+	}, false)
+
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "project.id", code: ProjectIssueCodeInvalidID},
+		{path: "project.connectionId", code: ProjectIssueCodeInvalidID},
+		{path: "project.name", code: ProjectIssueCodeRequired},
+		{path: "project.description", code: ProjectIssueCodeInvalidRange},
+		{path: "project.updatedAt", code: ProjectIssueCodeInvalidTime},
+	})
+
+	persistedIssues := ValidateProject(Project{ConnectionID: 10, Name: "Persisted"}, true)
+	assertProjectValidationIssueCodes(t, persistedIssues, []projectIssuePathCode{
+		{path: "project.id", code: ProjectIssueCodeInvalidID},
+		{path: "project.createdAt", code: ProjectIssueCodeInvalidTime},
+		{path: "project.updatedAt", code: ProjectIssueCodeInvalidTime},
+	})
+}
+
+func TestValidateProjectTableReturnsStableFieldPathsAndCodes(t *testing.T) {
+	rowCount := -1
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+	issues := ValidateProjectTable(ProjectTable{
+		ID:             0,
+		ProjectID:      0,
+		TableID:        -20,
+		RowCount:       &rowCount,
+		TruncateBefore: false,
+		ExecutionOrder: 0,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}, true)
+
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTable.id", code: ProjectIssueCodeInvalidID},
+		{path: "projectTable.projectId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTable.tableId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTable.rowCount", code: ProjectIssueCodeInvalidRange},
+		{path: "projectTable.executionOrder", code: ProjectIssueCodeInvalidRange},
+		{path: "projectTable.updatedAt", code: ProjectIssueCodeInvalidTime},
+	})
+
+	draftIssues := ValidateProjectTable(ProjectTable{ProjectID: 0, TableID: 10, ExecutionOrder: 1}, false)
+	assertProjectValidationIssueCodes(t, draftIssues, []projectIssuePathCode{
+		{path: "projectTable.projectId", code: ProjectIssueCodeInvalidID},
+	})
+}
+
+func TestValidateProjectTableRelationReturnsStableFieldPathsAndCodes(t *testing.T) {
+	parentID := int64(0)
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(-time.Minute)
+	issues := ValidateProjectTableRelation(ProjectTableRelation{
+		ID:                   0,
+		ProjectID:            0,
+		TableRelationID:      0,
+		ParentProjectTableID: &parentID,
+		ChildProjectTableID:  0,
+		MultiplierMin:        -1,
+		MultiplierMax:        0,
+		RelValueSource:       RelationValueSource("ARCHIVED"),
+		RelSourceSQL:         "select password from secrets",
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+	}, true)
+
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTableRelation.id", code: ProjectIssueCodeInvalidID},
+		{path: "projectTableRelation.projectId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTableRelation.tableRelationId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTableRelation.childProjectTableId", code: ProjectIssueCodeInvalidID},
+		{path: "projectTableRelation.multiplierMin", code: ProjectIssueCodeInvalidRange},
+		{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeInvalidEnum},
+		{path: "projectTableRelation.updatedAt", code: ProjectIssueCodeInvalidTime},
+	})
+
+	rangeIssues := ValidateProjectTableRelation(ProjectTableRelation{
+		ProjectID:           10,
+		TableRelationID:     20,
+		ChildProjectTableID: 30,
+		MultiplierMin:       2,
+		MultiplierMax:       1,
+		RelValueSource:      RelationValueSourceFromDBQuery,
+		RelSourceSQL:        "select id from parent",
+	}, false)
+	assertProjectValidationIssueCodes(t, rangeIssues, []projectIssuePathCode{
+		{path: "projectTableRelation.multiplierMax", code: ProjectIssueCodeInvalidRange},
+	})
+}
+
+func TestValidateProjectTableRelationValueSourceCombinations(t *testing.T) {
+	parentID := int64(100)
+	tests := []struct {
+		name     string
+		relation ProjectTableRelation
+		want     []projectIssuePathCode
+	}{
+		{
+			name: "blank source is required",
+			relation: ProjectTableRelation{
+				ProjectID:           10,
+				TableRelationID:     20,
+				ChildProjectTableID: 30,
+				MultiplierMin:       0,
+				MultiplierMax:       1,
+			},
+			want: []projectIssuePathCode{{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeRequired}},
+		},
+		{
+			name: "from execution requires parent but not SQL",
+			relation: ProjectTableRelation{
+				ProjectID:           10,
+				TableRelationID:     20,
+				ChildProjectTableID: 30,
+				MultiplierMin:       0,
+				MultiplierMax:       1,
+				RelValueSource:      RelationValueSourceFromExecution,
+				RelSourceSQL:        "select id from parent",
+			},
+			want: []projectIssuePathCode{{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeParentRequired}},
+		},
+		{
+			name: "db query requires sql but allows absent parent",
+			relation: ProjectTableRelation{
+				ProjectID:           10,
+				TableRelationID:     20,
+				ChildProjectTableID: 30,
+				MultiplierMin:       0,
+				MultiplierMax:       1,
+				RelValueSource:      RelationValueSourceFromDBQuery,
+				RelSourceSQL:        " \t ",
+			},
+			want: []projectIssuePathCode{{path: "projectTableRelation.relSourceSql", code: ProjectIssueCodeSQLRequired}},
+		},
+		{
+			name: "merged requires parent and sql",
+			relation: ProjectTableRelation{
+				ProjectID:           10,
+				TableRelationID:     20,
+				ChildProjectTableID: 30,
+				MultiplierMin:       0,
+				MultiplierMax:       1,
+				RelValueSource:      RelationValueSourceMerged,
+			},
+			want: []projectIssuePathCode{
+				{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeParentRequired},
+				{path: "projectTableRelation.relSourceSql", code: ProjectIssueCodeSQLRequired},
+			},
+		},
+		{
+			name: "merged accepts parent and sql without executing sql",
+			relation: ProjectTableRelation{
+				ProjectID:            10,
+				TableRelationID:      20,
+				ParentProjectTableID: &parentID,
+				ChildProjectTableID:  30,
+				MultiplierMin:        0,
+				MultiplierMax:        1,
+				RelValueSource:       RelationValueSourceMerged,
+				RelSourceSQL:         "select password from should_not_execute",
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := ValidateProjectTableRelation(tt.relation, false)
+			assertProjectValidationIssueCodes(t, issues, tt.want)
+		})
+	}
+}
+
+func TestValidateProjectTablesReturnsDuplicateTableReferencesWithinSameProject(t *testing.T) {
+	tables := []ProjectTable{
+		{ProjectID: 7, TableID: 100, ExecutionOrder: 1},
+		{ProjectID: 7, TableID: 101, ExecutionOrder: 2},
+		{ProjectID: 7, TableID: 100, ExecutionOrder: 3},
+		{ProjectID: 8, TableID: 100, ExecutionOrder: 4},
+	}
+
+	issues := ValidateProjectTables(tables, false)
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "tables[2].tableId", code: ProjectIssueCodeDuplicateTable},
+	})
+}
+
 func TestProjectTableRelationExcludesExecutionAlgorithmsAndRuntimeState(t *testing.T) {
 	relationType := reflect.TypeOf(ProjectTableRelation{})
 	for _, forbidden := range []string{
@@ -638,8 +836,12 @@ func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 		"ProjectIssueSeverityError":        true,
 	}
 	allowedExportedFuncs := map[string]bool{
-		"IsKnown":                   true,
-		"NewProjectValidationIssue": true,
+		"IsKnown":                      true,
+		"NewProjectValidationIssue":    true,
+		"ValidateProject":              true,
+		"ValidateProjectTable":         true,
+		"ValidateProjectTables":        true,
+		"ValidateProjectTableRelation": true,
 	}
 
 	files, err := filepath.Glob("*.go")
@@ -724,6 +926,42 @@ func TestProjectDomainScaffoldAvoidsOutOfScopeDependencies(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+type projectIssuePathCode struct {
+	path string
+	code ProjectIssueCode
+}
+
+func assertProjectValidationIssueCodes(t *testing.T, issues []ProjectValidationIssue, expected []projectIssuePathCode) {
+	t.Helper()
+
+	actual := make([]projectIssuePathCode, 0, len(issues))
+	for _, issue := range issues {
+		actual = append(actual, projectIssuePathCode{path: issue.Path, code: issue.Code})
+		if issue.Severity != ProjectIssueSeverityError {
+			t.Fatalf("issue severity = %q, want error: %#v", issue.Severity, issue)
+		}
+		if strings.TrimSpace(issue.Message) == "" {
+			t.Fatalf("issue message should be safe and non-empty: %#v", issue)
+		}
+		encoded, err := json.Marshal(issue)
+		if err != nil {
+			t.Fatalf("Marshal(ProjectValidationIssue) returned error: %v", err)
+		}
+		lowerEncoded := strings.ToLower(string(encoded))
+		for _, leaked := range []string{"select password", "should_not_execute", "secret"} {
+			if strings.Contains(lowerEncoded, leaked) {
+				t.Fatalf("issue leaked SQL-sensitive content %q in %s", leaked, encoded)
+			}
+		}
+	}
+	if len(actual) == 0 && len(expected) == 0 {
+		return
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("issue path/codes = %#v, want %#v in %#v", actual, expected, issues)
 	}
 }
 
