@@ -689,6 +689,86 @@ func TestValidateProjectTableRelationValueSourceCombinations(t *testing.T) {
 	}
 }
 
+func TestDecodeProjectTableJSONReportsPresenceForRequiredNullableAndZeroValueFields(t *testing.T) {
+	decoded, issues, err := DecodeProjectTableJSON([]byte(`{"id":0,"projectId":101,"tableId":202,"executionOrder":3}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableJSON returned error: %v", err)
+	}
+	if decoded.RowCount != nil {
+		t.Fatalf("missing rowCount decoded as %#v, want nil zero value", decoded.RowCount)
+	}
+	if decoded.TruncateBefore {
+		t.Fatalf("missing truncateBefore decoded as true, want false zero value")
+	}
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTable.rowCount", code: ProjectIssueCodeRequired},
+		{path: "projectTable.truncateBefore", code: ProjectIssueCodeRequired},
+	})
+
+	zeroRows := 0
+	decoded, issues, err = DecodeProjectTableJSON([]byte(`{"id":0,"projectId":101,"tableId":202,"rowCount":0,"truncateBefore":false,"executionOrder":3}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableJSON with explicit zero values returned error: %v", err)
+	}
+	if decoded.RowCount == nil || *decoded.RowCount != zeroRows {
+		t.Fatalf("explicit rowCount zero decoded as %#v, want pointer to 0", decoded.RowCount)
+	}
+	if decoded.TruncateBefore {
+		t.Fatalf("explicit truncateBefore false was not preserved")
+	}
+	assertProjectValidationIssueCodes(t, issues, nil)
+
+	decoded, issues, err = DecodeProjectTableJSON([]byte(`{"id":0,"projectId":101,"tableId":202,"rowCount":null,"truncateBefore":false,"executionOrder":3}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableJSON with nullable rowCount returned error: %v", err)
+	}
+	if decoded.RowCount != nil {
+		t.Fatalf("explicit rowCount null decoded as %#v, want nil", decoded.RowCount)
+	}
+	assertProjectValidationIssueCodes(t, issues, nil)
+}
+
+func TestDecodeProjectTableRelationJSONReportsPresenceForRequiredNullableIDAndEnum(t *testing.T) {
+	decoded, issues, err := DecodeProjectTableRelationJSON([]byte(`{"id":0,"projectId":101,"tableRelationId":401,"childProjectTableId":502,"multiplierMin":0,"multiplierMax":3,"relValueSource":"FROM_DB_QUERY","relSourceSql":"select id from parent"}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableRelationJSON returned error: %v", err)
+	}
+	if decoded.ParentProjectTableID != nil {
+		t.Fatalf("missing parentProjectTableId decoded as %#v, want nil zero value", decoded.ParentProjectTableID)
+	}
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTableRelation.parentProjectTableId", code: ProjectIssueCodeRequired},
+	})
+
+	decoded, issues, err = DecodeProjectTableRelationJSON([]byte(`{"id":0,"projectId":101,"tableRelationId":401,"parentProjectTableId":null,"childProjectTableId":502,"multiplierMin":0,"multiplierMax":3,"relSourceSql":"select id from parent"}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableRelationJSON without relValueSource returned error: %v", err)
+	}
+	if decoded.RelValueSource != "" {
+		t.Fatalf("missing relValueSource decoded as %q, want blank zero value", decoded.RelValueSource)
+	}
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeRequired},
+	})
+
+	decoded, issues, err = DecodeProjectTableRelationJSON([]byte(`{"id":0,"projectId":101,"tableRelationId":401,"parentProjectTableId":null,"childProjectTableId":502,"multiplierMin":0,"multiplierMax":3,"relValueSource":"FROM_DB_QUERY","relSourceSql":"select id from parent"}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableRelationJSON with nullable parent returned error: %v", err)
+	}
+	if decoded.ParentProjectTableID != nil {
+		t.Fatalf("explicit parentProjectTableId null decoded as %#v, want nil", decoded.ParentProjectTableID)
+	}
+	assertProjectValidationIssueCodes(t, issues, nil)
+
+	_, issues, err = DecodeProjectTableRelationJSON([]byte(`{"id":0,"projectId":101,"tableRelationId":401,"parentProjectTableId":null,"childProjectTableId":502,"multiplierMin":0,"multiplierMax":3,"relValueSource":"ARCHIVED","relSourceSql":"select id from parent"}`), false)
+	if err != nil {
+		t.Fatalf("DecodeProjectTableRelationJSON with unknown relValueSource returned error: %v", err)
+	}
+	assertProjectValidationIssueCodes(t, issues, []projectIssuePathCode{
+		{path: "projectTableRelation.relValueSource", code: ProjectIssueCodeInvalidEnum},
+	})
+}
+
 func TestValidateProjectTablesReturnsDuplicateTableReferencesWithinSameProject(t *testing.T) {
 	tables := []ProjectTable{
 		{ProjectID: 7, TableID: 100, ExecutionOrder: 1},
@@ -836,12 +916,14 @@ func TestProjectDomainExportsOnlyCurrentTaskContract(t *testing.T) {
 		"ProjectIssueSeverityError":        true,
 	}
 	allowedExportedFuncs := map[string]bool{
-		"IsKnown":                      true,
-		"NewProjectValidationIssue":    true,
-		"ValidateProject":              true,
-		"ValidateProjectTable":         true,
-		"ValidateProjectTables":        true,
-		"ValidateProjectTableRelation": true,
+		"IsKnown":                        true,
+		"NewProjectValidationIssue":      true,
+		"ValidateProject":                true,
+		"ValidateProjectTable":           true,
+		"ValidateProjectTables":          true,
+		"ValidateProjectTableRelation":   true,
+		"DecodeProjectTableJSON":         true,
+		"DecodeProjectTableRelationJSON": true,
 	}
 
 	files, err := filepath.Glob("*.go")

@@ -1,6 +1,7 @@
 package project
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -191,6 +192,52 @@ func ValidateProjectTableRelation(relation ProjectTableRelation, persisted bool)
 	return issues
 }
 
+// DecodeProjectTableJSON decodes a ProjectTable JSON payload, reports required-field presence issues, and then applies ProjectTable validation.
+func DecodeProjectTableJSON(data []byte, persisted bool) (ProjectTable, []ProjectValidationIssue, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return ProjectTable{}, nil, err
+	}
+
+	var table ProjectTable
+	if err := json.Unmarshal(data, &table); err != nil {
+		return ProjectTable{}, nil, err
+	}
+
+	requiredFields := []string{"id", "projectId", "tableId", "rowCount", "truncateBefore", "executionOrder"}
+	if persisted {
+		requiredFields = append(requiredFields, "createdAt", "updatedAt")
+	}
+	missing := missingProjectJSONFields(fields, requiredFields...)
+	issues := make([]ProjectValidationIssue, 0, len(missing))
+	issues = append(issues, requireMissingProjectJSONFields("projectTable", missing, requiredFields...)...)
+	issues = append(issues, filterProjectValidationIssuesForMissingFields(ValidateProjectTable(table, persisted), "projectTable", missing)...)
+	return table, issues, nil
+}
+
+// DecodeProjectTableRelationJSON decodes a ProjectTableRelation JSON payload, reports required-field presence issues, and then applies ProjectTableRelation validation.
+func DecodeProjectTableRelationJSON(data []byte, persisted bool) (ProjectTableRelation, []ProjectValidationIssue, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return ProjectTableRelation{}, nil, err
+	}
+
+	var relation ProjectTableRelation
+	if err := json.Unmarshal(data, &relation); err != nil {
+		return ProjectTableRelation{}, nil, err
+	}
+
+	requiredFields := []string{"id", "projectId", "tableRelationId", "parentProjectTableId", "childProjectTableId", "multiplierMin", "multiplierMax", "relValueSource"}
+	if persisted {
+		requiredFields = append(requiredFields, "createdAt", "updatedAt")
+	}
+	missing := missingProjectJSONFields(fields, requiredFields...)
+	issues := make([]ProjectValidationIssue, 0, len(missing))
+	issues = append(issues, requireMissingProjectJSONFields("projectTableRelation", missing, requiredFields...)...)
+	issues = append(issues, filterProjectValidationIssuesForMissingFields(ValidateProjectTableRelation(relation, persisted), "projectTableRelation", missing)...)
+	return relation, issues, nil
+}
+
 func projectValidationMessage(code ProjectIssueCode, path string) string {
 	switch code {
 	case ProjectIssueCodeRequired:
@@ -303,6 +350,40 @@ func validateRelationValueSourceCombination(relation ProjectTableRelation) []Pro
 		}
 	}
 	return issues
+}
+
+func requireMissingProjectJSONFields(prefix string, missing map[string]bool, names ...string) []ProjectValidationIssue {
+	issues := make([]ProjectValidationIssue, 0, len(names))
+	for _, name := range names {
+		if missing[name] {
+			issues = append(issues, NewProjectValidationIssue(prefix+"."+name, ProjectIssueCodeRequired))
+		}
+	}
+	return issues
+}
+
+func missingProjectJSONFields(fields map[string]json.RawMessage, names ...string) map[string]bool {
+	missing := make(map[string]bool)
+	for _, name := range names {
+		if _, ok := fields[name]; !ok {
+			missing[name] = true
+		}
+	}
+	return missing
+}
+
+func filterProjectValidationIssuesForMissingFields(issues []ProjectValidationIssue, prefix string, missing map[string]bool) []ProjectValidationIssue {
+	if len(missing) == 0 {
+		return issues
+	}
+	filtered := issues[:0]
+	for _, issue := range issues {
+		if field := strings.TrimPrefix(issue.Path, prefix+"."); missing[field] {
+			continue
+		}
+		filtered = append(filtered, issue)
+	}
+	return filtered
 }
 
 func prefixProjectValidationIssues(issues []ProjectValidationIssue, prefix string, oldPrefix string) []ProjectValidationIssue {

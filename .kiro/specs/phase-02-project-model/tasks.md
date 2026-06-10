@@ -51,7 +51,7 @@
   - _Boundary: ProjectValidation_
   - _Depends: 3.1_
 
-- [ ] 3.3 实现 JSON presence 诊断入口
+- [x] 3.3 实现 JSON presence 诊断入口
   - 提供可区分字段缺失与 Go 零值的 JSON 解码辅助能力。
   - 覆盖 `truncateBefore`、nullable ID、nullable rowCount 和枚举字段的缺失诊断。
   - 完成后，缺少必填 JSON 字段会返回字段级 presence issue，而不会被误判为合法零值。
