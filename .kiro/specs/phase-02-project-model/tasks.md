@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 建立 Project 领域包基础
+- [x] 1. 建立 Project 领域包基础
   - 在现有 Go 模块内建立 `Project 任务组织模型` 的领域包位置，保留纯 domain 边界。
   - 准备核心模型、枚举、校验和测试文件承载点，并遵守 Go 注释规则。
   - 完成后，包能够在不依赖 Wails、Vue、store、service、engine、generator、真实数据库驱动或 `internal/dbx` 的情况下被 `go test` 发现。
