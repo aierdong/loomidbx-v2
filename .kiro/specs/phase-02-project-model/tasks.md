@@ -8,7 +8,7 @@
   - _Boundary: DomainScaffold_
 
 - [ ] 2. 实现 Project 配置领域模型
-- [ ] 2.1 实现 Project 聚合根合同
+- [x] 2.1 实现 Project 聚合根合同
   - 表达 Project 的稳定身份、目标连接、名称、说明和时间字段。
   - 为所有导出类型和字段补充符合项目规则的 Go 注释。
   - 完成后，Project 可通过 lower camelCase JSON 字段完成创建、加载和序列化。
