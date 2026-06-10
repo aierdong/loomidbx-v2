@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 0. 上游就绪校验（所有任务前置）
-- [ ] 0.1 执行上游领域合同就绪校验
+- [x] 0.1 执行上游领域合同就绪校验
   - 本任务必须作为所有实现、测试和验证任务的前置门禁；未完成前不得开始 1.x 及后续任务。
   - 检查 `phase-02-database-schema-model` 已完成代码落地，并在 `internal/domain/schema` 中提供 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode`。
   - 检查 `phase-02-table-field-constraint-model` 已完成代码落地，并在 `internal/domain/schema` 中提供 `DbTable`、`DbColumn`、`TableConstraint` 及基础 ID / 名称校验合同。
