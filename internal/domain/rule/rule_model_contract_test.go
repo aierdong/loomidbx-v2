@@ -69,6 +69,75 @@ func TestGeneratorConfigStableIdentityParentReferencesFieldsAndJSONTags(t *testi
 	}
 }
 
+func TestGeneratorConfigJSONRoundTripPreservesStableFields(t *testing.T) {
+	createdAt := time.Date(2026, 6, 10, 11, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(2 * time.Hour)
+	config := GeneratorConfig{
+		ID:              701,
+		ColumnID:        801,
+		GeneratorName:   "faker.internet.email",
+		DataMappingType: DataMappingTypeText,
+		Params:          GeneratorParams{Raw: json.RawMessage(`{"locale":"zh-CN","unique":true}`)},
+		ConfigStatus:    ConfigStatusNeedsReview,
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	}
+
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("Marshal(GeneratorConfig) returned error: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatalf("Unmarshal encoded GeneratorConfig into field map returned error: %v", err)
+	}
+	assertRuleJSONFieldsPresent(t, fields, "id", "columnId", "generatorName", "dataMappingType", "params", "configStatus", "createdAt", "updatedAt")
+	assertRuleJSONField(t, fields, "id", "701")
+	assertRuleJSONField(t, fields, "columnId", "801")
+	assertRuleJSONField(t, fields, "generatorName", `"faker.internet.email"`)
+	assertRuleJSONField(t, fields, "dataMappingType", `"text"`)
+	assertRuleJSONField(t, fields, "params", `{"locale":"zh-CN","unique":true}`)
+	assertRuleJSONField(t, fields, "configStatus", `"NEEDS_REVIEW"`)
+
+	var decoded GeneratorConfig
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(GeneratorConfig) returned error: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, config) {
+		t.Fatalf("decoded GeneratorConfig = %#v, want %#v", decoded, config)
+	}
+}
+
+func TestGeneratorConfigMissingOptionalJSONFieldsDecodeToDefaults(t *testing.T) {
+	payload := []byte(`{"columnId":44,"generatorName":"faker.person.name","dataMappingType":"text","configStatus":"ACTIVE"}`)
+
+	var decoded GeneratorConfig
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("Unmarshal(default-compatible GeneratorConfig) returned error: %v", err)
+	}
+	if decoded.ID != 0 {
+		t.Fatalf("default ID = %d, want 0", decoded.ID)
+	}
+	if decoded.ColumnID != 44 {
+		t.Fatalf("columnId = %d, want 44", decoded.ColumnID)
+	}
+	if decoded.GeneratorName != "faker.person.name" {
+		t.Fatalf("generatorName = %q, want stable value", decoded.GeneratorName)
+	}
+	if decoded.DataMappingType != DataMappingTypeText {
+		t.Fatalf("dataMappingType = %q, want %q", decoded.DataMappingType, DataMappingTypeText)
+	}
+	if len(decoded.Params.Raw) != 0 {
+		t.Fatalf("missing params raw = %q, want empty raw payload", decoded.Params.Raw)
+	}
+	if decoded.ConfigStatus != ConfigStatusActive {
+		t.Fatalf("configStatus = %q, want %q", decoded.ConfigStatus, ConfigStatusActive)
+	}
+	if !decoded.CreatedAt.IsZero() || !decoded.UpdatedAt.IsZero() {
+		t.Fatalf("missing audit times = %s/%s, want zero values", decoded.CreatedAt, decoded.UpdatedAt)
+	}
+}
+
 func TestDataMappingTypeStableStringValuesRecognitionAndJSON(t *testing.T) {
 	tests := []struct {
 		name      string
