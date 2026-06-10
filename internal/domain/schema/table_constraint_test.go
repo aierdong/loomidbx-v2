@@ -207,6 +207,27 @@ func TestDomainEnumJSONPreservesUnknownStringsAndRejectsNonStrings(t *testing.T)
 	}
 }
 
+func TestTableValidationReusesUpstreamStructuredIssuesAndReturnsMultipleProblems(t *testing.T) {
+	var _ []SchemaValidationIssue = ValidateTable(DbTable{}, SchemaValidationModeDraft)
+	var _ []SchemaValidationIssue = ValidateColumn(DbColumn{}, SchemaValidationModeDraft)
+	var _ []SchemaValidationIssue = ValidateConstraint(TableConstraint{}, SchemaValidationModeDraft)
+	var _ []SchemaValidationIssue = ValidateLogicalType(ColumnLogicalType{})
+
+	issues := ValidateConstraint(TableConstraint{ConstraintType: TableConstraintType("CHECK")}, SchemaValidationMode("runtime"))
+
+	assertIssuePaths(t, issues, []string{"mode", "constraintType"})
+	assertIssueCodes(t, issues, map[string]SchemaIssueCode{
+		"mode":           SchemaIssueCodeValidationFailed,
+		"constraintType": SchemaIssueCodeValidationFailed,
+	})
+	assertAllIssuesSafeErrors(t, issues)
+	for _, issue := range issues {
+		if contractIssues := ValidateIssue(issue); len(contractIssues) != 0 {
+			t.Fatalf("table validation issue does not satisfy upstream issue contract: %#v produced %#v", issue, contractIssues)
+		}
+	}
+}
+
 func TestTableFieldConstraintScaffoldSerializesStableJSONContracts(t *testing.T) {
 	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	defaultValue := "nextval('users_id_seq')"
