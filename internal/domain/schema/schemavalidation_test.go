@@ -28,6 +28,10 @@ func TestSchemaIssueCodeStableStringValuesAndRecognition(t *testing.T) {
 		{name: "invalid type", code: SchemaIssueCodeInvalidType, expected: "SCHEMA_INVALID_TYPE"},
 		{name: "invalid range", code: SchemaIssueCodeInvalidRange, expected: "SCHEMA_INVALID_RANGE"},
 		{name: "invalid mapping", code: SchemaIssueCodeInvalidMapping, expected: "SCHEMA_INVALID_MAPPING"},
+		{name: "rule invalid enum", code: SchemaIssueCodeRuleInvalidEnum, expected: "RULE_INVALID_ENUM"},
+		{name: "rule invalid json", code: SchemaIssueCodeRuleInvalidJSON, expected: "RULE_INVALID_JSON"},
+		{name: "rule invalid text", code: SchemaIssueCodeRuleInvalidText, expected: "RULE_INVALID_TEXT"},
+		{name: "rule sensitive value", code: SchemaIssueCodeRuleSensitiveValueNotAllowed, expected: "RULE_SENSITIVE_VALUE_NOT_ALLOWED"},
 	}
 
 	for _, tt := range tests {

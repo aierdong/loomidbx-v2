@@ -35,6 +35,18 @@ const (
 
 	// SchemaIssueCodeInvalidMapping reports an invalid schema domain field mapping.
 	SchemaIssueCodeInvalidMapping SchemaIssueCode = "SCHEMA_INVALID_MAPPING"
+
+	// SchemaIssueCodeRuleInvalidEnum reports an unknown field generation rule enum value.
+	SchemaIssueCodeRuleInvalidEnum SchemaIssueCode = "RULE_INVALID_ENUM"
+
+	// SchemaIssueCodeRuleInvalidJSON reports invalid field generation rule JSON payload content.
+	SchemaIssueCodeRuleInvalidJSON SchemaIssueCode = "RULE_INVALID_JSON"
+
+	// SchemaIssueCodeRuleInvalidText reports unsafe or malformed field generation rule text.
+	SchemaIssueCodeRuleInvalidText SchemaIssueCode = "RULE_INVALID_TEXT"
+
+	// SchemaIssueCodeRuleSensitiveValueNotAllowed reports disallowed sensitive content in field generation rule parameters.
+	SchemaIssueCodeRuleSensitiveValueNotAllowed SchemaIssueCode = "RULE_SENSITIVE_VALUE_NOT_ALLOWED"
 )
 
 // IsKnown reports whether the schema issue code belongs to the stable schema domain issue-code set.
@@ -48,7 +60,11 @@ func (c SchemaIssueCode) IsKnown() bool {
 		SchemaIssueCodeInvalidIdentity,
 		SchemaIssueCodeInvalidType,
 		SchemaIssueCodeInvalidRange,
-		SchemaIssueCodeInvalidMapping:
+		SchemaIssueCodeInvalidMapping,
+		SchemaIssueCodeRuleInvalidEnum,
+		SchemaIssueCodeRuleInvalidJSON,
+		SchemaIssueCodeRuleInvalidText,
+		SchemaIssueCodeRuleSensitiveValueNotAllowed:
 		return true
 	default:
 		return false

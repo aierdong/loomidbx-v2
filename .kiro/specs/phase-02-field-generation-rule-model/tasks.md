@@ -36,7 +36,7 @@
   - _Depends: 1.1_
 
 - [ ] 3. 实现基础校验
-- [ ] 3.1 复用并扩展上游字段级校验合同
+- [x] 3.1 复用并扩展上游字段级校验合同
   - 复用上游 `SchemaValidationIssue`、`SchemaIssueCode`、`SchemaIssueSeverity` 和 `SchemaValidationMode`，不得在 `internal/domain/rule` 中定义平行 issue、severity 或 validation mode 类型。
   - 仅在既有 `SchemaIssueCode` 类型上追加字段规则所需错误码，并保持字段路径、severity 和安全消息规则一致。
   - 支持一次返回多个校验问题。
