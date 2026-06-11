@@ -7,7 +7,7 @@
   - _Requirements: 1.1, 1.4, 3.4, 5.4_
   - _Boundary: DomainScaffold_
 
-- [ ] 2. 实现 Project 配置领域模型
+- [x] 2. 实现 Project 配置领域模型
 - [x] 2.1 实现 Project 聚合根合同
   - 表达 Project 的稳定身份、目标连接、名称、说明和时间字段。
   - 为所有导出类型和字段补充符合项目规则的 Go 注释。
@@ -34,7 +34,7 @@
   - _Boundary: ProjectRelationModel, RelationValueSource_
   - _Depends: 1_
 
-- [ ] 3. 实现字段级基础校验
+- [x] 3. 实现字段级基础校验
 - [x] 3.1 定义 Project 校验问题合同
   - 提供字段路径、错误码、安全消息和必要 severity 的 JSON 兼容结构。
   - 保证校验结果能够一次返回多个问题，不 panic、不回显敏感 SQL 内容。
@@ -59,7 +59,7 @@
   - _Boundary: ProjectJSONValidation_
   - _Depends: 3.2_
 
-- [ ] 4. 增加单元与边界测试
+- [x] 4. 增加单元与边界测试
 - [x] 4.1 覆盖模型、枚举和 JSON 序列化测试
   - 覆盖 Project、ProjectTable、ProjectTableRelation 的 JSON 往返和 lower camelCase 字段名。
   - 覆盖 rowCount 的 nil、0、正数语义，以及三种 RelationValueSource 枚举字符串稳定性。
