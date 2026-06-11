@@ -1,6 +1,10 @@
 package execution
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+)
 
 // ExecutionTaskStatus identifies the stable task-level execution status.
 type ExecutionTaskStatus string
@@ -55,6 +59,9 @@ func (s *ExecutionTaskStatus) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
+	}
+	if value == "" && bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errors.New("execution task status must be a JSON string")
 	}
 
 	*s = ExecutionTaskStatus(value)
@@ -118,6 +125,9 @@ func (s *ExecutionTableStatus) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
+	}
+	if value == "" && bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errors.New("execution table status must be a JSON string")
 	}
 
 	*s = ExecutionTableStatus(value)

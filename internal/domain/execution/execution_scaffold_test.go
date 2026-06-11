@@ -225,7 +225,7 @@ func TestExecutionStatusJSONRoundTripPreservesKnownAndUnknownValues(t *testing.T
 }
 
 func TestExecutionStatusJSONRejectsNonStringValues(t *testing.T) {
-	for _, raw := range []string{`1`, `true`, `{"status":"RUNNING"}`} {
+	for _, raw := range []string{`1`, `true`, `null`, `{"status":"RUNNING"}`} {
 		t.Run("task "+raw, func(t *testing.T) {
 			var decoded ExecutionTaskStatus
 			if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
@@ -239,6 +239,115 @@ func TestExecutionStatusJSONRejectsNonStringValues(t *testing.T) {
 				t.Fatalf("Unmarshal ExecutionTableStatus should reject non-string JSON %s", raw)
 			}
 		})
+	}
+}
+
+func TestGenerationJobJSONRoundTripPreservesStableFields(t *testing.T) {
+	startedAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	endedAt := time.Date(2026, 6, 11, 9, 30, 0, 0, time.UTC)
+	createdAt := time.Date(2026, 6, 11, 8, 59, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 11, 9, 31, 0, 0, time.UTC)
+	occurredAt := time.Date(2026, 6, 11, 9, 25, 0, 0, time.UTC)
+	tableID := int64(300)
+	job := GenerationJob{
+		Task: ExecutionTask{
+			ID:        10,
+			ProjectID: 20,
+			TaskName:  "daily generation",
+			Status:    ExecutionTaskStatusPartialFailed,
+			StartedAt: startedAt,
+			EndedAt:   &endedAt,
+			CreatedAt: createdAt,
+		},
+		TableResults: []ExecutionTableResult{
+			{
+				ID:                 100,
+				ExecutionTaskID:    10,
+				TableID:            &tableID,
+				TableNameSnapshot:  "orders",
+				SchemaNameSnapshot: "public",
+				RowsWritten:        42,
+				Status:             ExecutionTableStatusFailed,
+				ErrorSnapshot: &ExecutionErrorSnapshot{
+					Code:       "WRITE_FAILED",
+					Message:    "write failed after partial success",
+					FieldPath:  "tableResults[0]",
+					OccurredAt: occurredAt,
+				},
+				ExecutionOrder: 1,
+				CreatedAt:      createdAt,
+				UpdatedAt:      updatedAt,
+			},
+		},
+	}
+
+	encoded, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("Marshal(GenerationJob) returned error: %v", err)
+	}
+	want := `{"task":{"id":10,"projectId":20,"taskName":"daily generation","status":"PARTIAL_FAILED","startedAt":"2026-06-11T09:00:00Z","endedAt":"2026-06-11T09:30:00Z","createdAt":"2026-06-11T08:59:00Z"},"tableResults":[{"id":100,"executionTaskId":10,"tableId":300,"tableNameSnapshot":"orders","schemaNameSnapshot":"public","rowsWritten":42,"status":"FAILED","errorSnapshot":{"code":"WRITE_FAILED","message":"write failed after partial success","fieldPath":"tableResults[0]","occurredAt":"2026-06-11T09:25:00Z"},"executionOrder":1,"createdAt":"2026-06-11T08:59:00Z","updatedAt":"2026-06-11T09:31:00Z"}]}`
+	if string(encoded) != want {
+		t.Fatalf("GenerationJob JSON = %s, want %s", encoded, want)
+	}
+
+	var decoded GenerationJob
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(GenerationJob) returned error: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, job) {
+		t.Fatalf("decoded GenerationJob = %#v, want %#v", decoded, job)
+	}
+}
+
+func TestExecutionTaskJSONDefaultsAndUnknownStatusCompatibility(t *testing.T) {
+	raw := `{"id":11,"projectId":20,"taskName":"future task","status":"QUEUED","startedAt":"2026-06-11T09:00:00Z","createdAt":"2026-06-11T08:59:00Z"}`
+
+	var decoded ExecutionTask
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("Unmarshal(ExecutionTask with omitted endedAt and unknown status) returned error: %v", err)
+	}
+	if decoded.EndedAt != nil {
+		t.Fatalf("decoded EndedAt = %#v, want nil when endedAt is omitted", decoded.EndedAt)
+	}
+	if !decoded.Status.IsUnknown() || decoded.Status.String() != "QUEUED" {
+		t.Fatalf("decoded Status = %q, want preserved unknown QUEUED", decoded.Status)
+	}
+	assertExecutionValidationIssueSet(t, decoded.Validate(), []executionIssuePathCode{
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+	})
+
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("Marshal(ExecutionTask with omitted endedAt and unknown status) returned error: %v", err)
+	}
+	if strings.Contains(string(encoded), "endedAt") {
+		t.Fatalf("ExecutionTask JSON = %s, want omitted endedAt", encoded)
+	}
+	if !strings.Contains(string(encoded), `"status":"QUEUED"`) {
+		t.Fatalf("ExecutionTask JSON = %s, want preserved unknown task status", encoded)
+	}
+}
+
+func TestExecutionErrorSnapshotJSONOmitsDefaultFieldPath(t *testing.T) {
+	raw := `{"code":"WRITE_FAILED","message":"safe summary","occurredAt":"2026-06-11T09:30:00Z"}`
+
+	var decoded ExecutionErrorSnapshot
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("Unmarshal(ExecutionErrorSnapshot with omitted fieldPath) returned error: %v", err)
+	}
+	if decoded.FieldPath != "" {
+		t.Fatalf("decoded FieldPath = %q, want empty default when fieldPath is omitted", decoded.FieldPath)
+	}
+
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("Marshal(ExecutionErrorSnapshot with omitted fieldPath) returned error: %v", err)
+	}
+	if strings.Contains(string(encoded), "fieldPath") {
+		t.Fatalf("ExecutionErrorSnapshot JSON = %s, want omitted fieldPath", encoded)
+	}
+	if string(encoded) != raw {
+		t.Fatalf("ExecutionErrorSnapshot JSON = %s, want %s", encoded, raw)
 	}
 }
 
