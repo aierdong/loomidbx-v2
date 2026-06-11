@@ -446,6 +446,264 @@ func TestExecutionValidationIssueExposesOnlySafeMessageContract(t *testing.T) {
 	}
 }
 
+func TestExecutionModelValidationAcceptsValidModels(t *testing.T) {
+	startedAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	endedAt := time.Date(2026, 6, 11, 9, 30, 0, 0, time.UTC)
+	createdAt := time.Date(2026, 6, 11, 8, 59, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 11, 9, 31, 0, 0, time.UTC)
+	tableID := int64(300)
+	job := GenerationJob{
+		Task: ExecutionTask{
+			ID:        10,
+			ProjectID: 20,
+			TaskName:  "daily generation",
+			Status:    ExecutionTaskStatusSuccess,
+			StartedAt: startedAt,
+			EndedAt:   &endedAt,
+			CreatedAt: createdAt,
+		},
+		TableResults: []ExecutionTableResult{
+			{
+				ID:                 100,
+				ExecutionTaskID:    10,
+				TableID:            &tableID,
+				TableNameSnapshot:  "orders",
+				SchemaNameSnapshot: "public",
+				RowsWritten:        42,
+				Status:             ExecutionTableStatusSuccess,
+				ExecutionOrder:     1,
+				CreatedAt:          createdAt,
+				UpdatedAt:          updatedAt,
+			},
+		},
+	}
+
+	if result := job.Task.Validate(); result.HasIssues() {
+		t.Fatalf("ExecutionTask.Validate() issues = %#v, want none", result.Issues)
+	}
+	if result := job.TableResults[0].Validate(); result.HasIssues() {
+		t.Fatalf("ExecutionTableResult.Validate() issues = %#v, want none", result.Issues)
+	}
+	if result := job.Validate(); result.HasIssues() {
+		t.Fatalf("GenerationJob.Validate() issues = %#v, want none", result.Issues)
+	}
+}
+
+func TestExecutionTaskValidationReturnsRequiredReferenceEnumRangeAndTimeIssues(t *testing.T) {
+	startedAt := time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC)
+	endedAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	task := ExecutionTask{
+		ID:        -1,
+		ProjectID: 0,
+		TaskName:  strings.Repeat("x", 201),
+		Status:    ExecutionTaskStatus("QUEUED"),
+		StartedAt: startedAt,
+		EndedAt:   &endedAt,
+		CreatedAt: time.Time{},
+	}
+
+	assertExecutionValidationIssueSet(t, task.Validate(), []executionIssuePathCode{
+		{path: "id", code: ValidationIssueCodeInvalidRange},
+		{path: "projectId", code: ValidationIssueCodeInvalidReference},
+		{path: "taskName", code: ValidationIssueCodeTooLong},
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+		{path: "endedAt", code: ValidationIssueCodeInvalidTimeRange},
+		{path: "createdAt", code: ValidationIssueCodeRequired},
+	})
+
+	task.TaskName = "   "
+	task.StartedAt = time.Time{}
+	task.EndedAt = nil
+	assertExecutionValidationIssueSet(t, task.Validate(), []executionIssuePathCode{
+		{path: "id", code: ValidationIssueCodeInvalidRange},
+		{path: "projectId", code: ValidationIssueCodeInvalidReference},
+		{path: "taskName", code: ValidationIssueCodeRequired},
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+		{path: "startedAt", code: ValidationIssueCodeRequired},
+		{path: "createdAt", code: ValidationIssueCodeRequired},
+	})
+}
+
+func TestExecutionTableResultValidationReturnsReferenceRangeEnumRequiredAndTimeIssues(t *testing.T) {
+	invalidTableID := int64(0)
+	createdAt := time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	result := ExecutionTableResult{
+		ID:                 -1,
+		ExecutionTaskID:    0,
+		TableID:            &invalidTableID,
+		TableNameSnapshot:  "   ",
+		SchemaNameSnapshot: strings.Repeat("s", 256),
+		RowsWritten:        -1,
+		Status:             ExecutionTableStatus("RETRYING"),
+		ExecutionOrder:     0,
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
+	}
+
+	assertExecutionValidationIssueSet(t, result.Validate(), []executionIssuePathCode{
+		{path: "id", code: ValidationIssueCodeInvalidRange},
+		{path: "executionTaskId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableNameSnapshot", code: ValidationIssueCodeRequired},
+		{path: "schemaNameSnapshot", code: ValidationIssueCodeTooLong},
+		{path: "rowsWritten", code: ValidationIssueCodeInvalidRange},
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+		{path: "executionOrder", code: ValidationIssueCodeInvalidRange},
+		{path: "updatedAt", code: ValidationIssueCodeInvalidTimeRange},
+	})
+
+	result.TableNameSnapshot = strings.Repeat("t", 256)
+	result.SchemaNameSnapshot = "   "
+	result.CreatedAt = time.Time{}
+	result.UpdatedAt = time.Time{}
+	assertExecutionValidationIssueSet(t, result.Validate(), []executionIssuePathCode{
+		{path: "id", code: ValidationIssueCodeInvalidRange},
+		{path: "executionTaskId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableNameSnapshot", code: ValidationIssueCodeTooLong},
+		{path: "schemaNameSnapshot", code: ValidationIssueCodeRequired},
+		{path: "rowsWritten", code: ValidationIssueCodeInvalidRange},
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+		{path: "executionOrder", code: ValidationIssueCodeInvalidRange},
+		{path: "createdAt", code: ValidationIssueCodeRequired},
+		{path: "updatedAt", code: ValidationIssueCodeRequired},
+	})
+}
+
+func TestExecutionTableResultValidationRequiresSafeErrorSnapshotForFailedStatus(t *testing.T) {
+	createdAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	failedResult := ExecutionTableResult{
+		ExecutionTaskID:    10,
+		TableNameSnapshot:  "orders",
+		SchemaNameSnapshot: "public",
+		Status:             ExecutionTableStatusFailed,
+		ExecutionOrder:     1,
+		CreatedAt:          createdAt,
+		UpdatedAt:          createdAt,
+	}
+
+	assertExecutionValidationIssueSet(t, failedResult.Validate(), []executionIssuePathCode{
+		{path: "errorSnapshot", code: ValidationIssueCodeRequired},
+	})
+
+	failedResult.ErrorSnapshot = &ExecutionErrorSnapshot{
+		Code:       "WRITE_FAILED",
+		Message:    "database password=secret appeared in raw driver error",
+		OccurredAt: time.Time{},
+	}
+	validation := failedResult.Validate()
+	assertExecutionValidationIssueSet(t, validation, []executionIssuePathCode{
+		{path: "errorSnapshot.message", code: ValidationIssueCodeSensitiveValueNotAllowed},
+		{path: "errorSnapshot.occurredAt", code: ValidationIssueCodeRequired},
+	})
+	assertExecutionValidationMessagesAreSafe(t, validation)
+}
+
+func TestExecutionErrorSnapshotValidationReturnsSafeDiagnosticIssues(t *testing.T) {
+	snapshot := ExecutionErrorSnapshot{
+		Code:       "   ",
+		Message:    "SELECT * FROM users contained credential token",
+		OccurredAt: time.Time{},
+	}
+
+	validation := snapshot.Validate()
+	assertExecutionValidationIssueSet(t, validation, []executionIssuePathCode{
+		{path: "code", code: ValidationIssueCodeRequired},
+		{path: "message", code: ValidationIssueCodeSensitiveValueNotAllowed},
+		{path: "occurredAt", code: ValidationIssueCodeRequired},
+	})
+	assertExecutionValidationMessagesAreSafe(t, validation)
+}
+
+func TestGenerationJobValidationReturnsNestedReferenceAndUniquenessIssues(t *testing.T) {
+	createdAt := time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC)
+	tableID := int64(300)
+	job := GenerationJob{
+		Task: ExecutionTask{
+			ID:        10,
+			ProjectID: 20,
+			TaskName:  "daily generation",
+			Status:    ExecutionTaskStatusRunning,
+			StartedAt: createdAt,
+			CreatedAt: createdAt,
+		},
+		TableResults: []ExecutionTableResult{
+			{
+				ExecutionTaskID:    10,
+				TableID:            &tableID,
+				TableNameSnapshot:  "orders",
+				SchemaNameSnapshot: "public",
+				Status:             ExecutionTableStatusPending,
+				ExecutionOrder:     1,
+				CreatedAt:          createdAt,
+				UpdatedAt:          createdAt,
+			},
+			{
+				ExecutionTaskID:    11,
+				TableID:            &tableID,
+				TableNameSnapshot:  "orders_archive",
+				SchemaNameSnapshot: "public",
+				Status:             ExecutionTableStatusSuccess,
+				ExecutionOrder:     1,
+				CreatedAt:          createdAt,
+				UpdatedAt:          createdAt,
+			},
+		},
+	}
+
+	assertExecutionValidationIssueSet(t, job.Validate(), []executionIssuePathCode{
+		{path: "tableResults[1].executionTaskId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableResults[1].tableId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableResults[1].executionOrder", code: ValidationIssueCodeInvalidRange},
+	})
+
+	job.Task.TaskName = "   "
+	assertExecutionValidationIssueSet(t, job.Validate(), []executionIssuePathCode{
+		{path: "task", code: ValidationIssueCodeInvalidNestedModel},
+		{path: "task.taskName", code: ValidationIssueCodeRequired},
+		{path: "tableResults[1].executionTaskId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableResults[1].tableId", code: ValidationIssueCodeInvalidReference},
+		{path: "tableResults[1].executionOrder", code: ValidationIssueCodeInvalidRange},
+	})
+}
+
+type executionIssuePathCode struct {
+	path string
+	code ValidationIssueCode
+}
+
+func assertExecutionValidationIssueSet(t *testing.T, result ValidationResult, want []executionIssuePathCode) {
+	t.Helper()
+	if len(result.Issues) != len(want) {
+		t.Fatalf("ValidationResult issues = %#v, want %d issues", result.Issues, len(want))
+	}
+	for _, expected := range want {
+		matched := false
+		for _, issue := range result.Issues {
+			if issue.Path == expected.path && issue.Code == expected.code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("ValidationResult issues = %#v, missing path/code %#v", result.Issues, expected)
+		}
+	}
+}
+
+func assertExecutionValidationMessagesAreSafe(t *testing.T, result ValidationResult) {
+	t.Helper()
+	for _, issue := range result.Issues {
+		message := strings.ToLower(issue.Message)
+		for _, forbidden := range []string{"password", "credential", "token", "secret", "select *", "generated data"} {
+			if strings.Contains(message, forbidden) {
+				t.Fatalf("validation issue message %q must not contain unsafe content %q", issue.Message, forbidden)
+			}
+		}
+	}
+}
+
 func assertExecutionJSONTags(t *testing.T, typ reflect.Type, expected map[string]string) {
 	t.Helper()
 	for fieldName, want := range expected {
