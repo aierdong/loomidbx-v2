@@ -113,6 +113,99 @@ func (r ValidationResult) HasIssues() bool {
 	return len(r.Issues) > 0
 }
 
+// DecodeExecutionTaskJSON decodes an execution task JSON document and returns presence-aware validation diagnostics.
+// Missing required JSON fields are reported as REQUIRED while present-but-invalid values keep their field-level validation code.
+func DecodeExecutionTaskJSON(data []byte) (ExecutionTask, ValidationResult, error) {
+	var task ExecutionTask
+	if err := json.Unmarshal(data, &task); err != nil {
+		return task, ValidationResult{}, err
+	}
+
+	fields, err := decodeJSONObjectFields(data)
+	if err != nil {
+		return task, ValidationResult{}, err
+	}
+
+	validation := task.Validate()
+	applyMissingRequiredFields(&validation, fields, []string{"id", "projectId", "taskName", "status", "startedAt", "createdAt"})
+	return task, validation, nil
+}
+
+// DecodeExecutionTableResultJSON decodes a table result JSON document and returns presence-aware validation diagnostics.
+// Optional references and error snapshots are validated only when present or when required by failed status semantics.
+func DecodeExecutionTableResultJSON(data []byte) (ExecutionTableResult, ValidationResult, error) {
+	var tableResult ExecutionTableResult
+	if err := json.Unmarshal(data, &tableResult); err != nil {
+		return tableResult, ValidationResult{}, err
+	}
+
+	fields, err := decodeJSONObjectFields(data)
+	if err != nil {
+		return tableResult, ValidationResult{}, err
+	}
+
+	validation := tableResult.Validate()
+	applyMissingRequiredFields(&validation, fields, []string{"id", "executionTaskId", "tableNameSnapshot", "schemaNameSnapshot", "rowsWritten", "status", "executionOrder", "createdAt", "updatedAt"})
+	return tableResult, validation, nil
+}
+
+// DecodeExecutionErrorSnapshotJSON decodes an error snapshot JSON document and returns presence-aware validation diagnostics.
+// The returned diagnostics use stable JSON field paths and safe messages only.
+func DecodeExecutionErrorSnapshotJSON(data []byte) (ExecutionErrorSnapshot, ValidationResult, error) {
+	var snapshot ExecutionErrorSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return snapshot, ValidationResult{}, err
+	}
+
+	fields, err := decodeJSONObjectFields(data)
+	if err != nil {
+		return snapshot, ValidationResult{}, err
+	}
+
+	validation := snapshot.Validate()
+	applyMissingRequiredFields(&validation, fields, []string{"code", "message", "occurredAt"})
+	return snapshot, validation, nil
+}
+
+// DecodeGenerationJobJSON decodes a generation job JSON document and returns aggregate validation diagnostics.
+// It applies nested presence checks without consulting services, stores, execution engines, databases, or UI state.
+func DecodeGenerationJobJSON(data []byte) (GenerationJob, ValidationResult, error) {
+	var job GenerationJob
+	if err := json.Unmarshal(data, &job); err != nil {
+		return job, ValidationResult{}, err
+	}
+
+	fields, err := decodeJSONObjectFields(data)
+	if err != nil {
+		return job, ValidationResult{}, err
+	}
+
+	validation := job.Validate()
+	applyMissingRequiredFields(&validation, fields, []string{"task"})
+	if rawTask, ok := fields["task"]; ok {
+		_, taskValidation, err := DecodeExecutionTaskJSON(rawTask)
+		if err != nil {
+			return job, ValidationResult{}, err
+		}
+		replaceNestedValidationIssues(&validation, "task", taskValidation.Issues)
+	}
+	if rawTableResults, ok := fields["tableResults"]; ok {
+		var rawResults []json.RawMessage
+		if err := json.Unmarshal(rawTableResults, &rawResults); err != nil {
+			return job, ValidationResult{}, err
+		}
+		for index, rawResult := range rawResults {
+			_, tableValidation, err := DecodeExecutionTableResultJSON(rawResult)
+			if err != nil {
+				return job, ValidationResult{}, err
+			}
+			replaceNestedValidationIssues(&validation, fmt.Sprintf("tableResults[%d]", index), tableValidation.Issues)
+		}
+	}
+
+	return job, validation, nil
+}
+
 // Validate checks the generation job aggregate and its nested execution records using only in-memory domain data.
 // It returns all field-level issues found, including nested model, parent reference, and collection uniqueness problems.
 func (j GenerationJob) Validate() ValidationResult {
@@ -287,4 +380,60 @@ func containsSensitiveMarker(value string) bool {
 		}
 	}
 	return false
+}
+
+func decodeJSONObjectFields(data []byte) (map[string]json.RawMessage, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	return fields, nil
+}
+
+func applyMissingRequiredFields(result *ValidationResult, fields map[string]json.RawMessage, requiredFields []string) {
+	for _, field := range requiredFields {
+		if _, exists := fields[field]; !exists {
+			replaceIssueCode(result, field, ValidationIssueCodeRequired, field+" is required")
+		}
+	}
+}
+
+func replaceIssueCode(result *ValidationResult, path string, code ValidationIssueCode, message string) {
+	for index, issue := range result.Issues {
+		if issue.Path == path {
+			result.Issues[index].Code = code
+			result.Issues[index].Message = message
+			return
+		}
+	}
+	result.AddIssue(path, code, message)
+}
+
+func replaceNestedValidationIssues(result *ValidationResult, prefix string, issues []ValidationIssue) {
+	if len(issues) == 0 {
+		return
+	}
+
+	replacementByPath := map[string]ValidationIssue{}
+	for _, issue := range issues {
+		path := prefix
+		if issue.Path != "" {
+			path += "." + issue.Path
+		}
+		replacementByPath[path] = ValidationIssue{
+			Path:    path,
+			Code:    issue.Code,
+			Message: issue.Message,
+		}
+	}
+
+	for index, issue := range result.Issues {
+		if replacement, ok := replacementByPath[issue.Path]; ok {
+			result.Issues[index] = replacement
+			delete(replacementByPath, issue.Path)
+		}
+	}
+	for _, replacement := range replacementByPath {
+		result.AddIssue(replacement.Path, replacement.Code, replacement.Message)
+	}
 }

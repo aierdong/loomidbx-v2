@@ -777,6 +777,76 @@ func TestGenerationJobValidationReturnsNestedReferenceAndUniquenessIssues(t *tes
 	})
 }
 
+func TestDecodeExecutionTaskJSONDistinguishesMissingRequiredFieldsFromInvalidValues(t *testing.T) {
+	missingReference := []byte(`{"id":0,"taskName":"   ","status":"QUEUED","startedAt":"2026-06-11T09:00:00Z","createdAt":"2026-06-11T08:59:00Z"}`)
+	decoded, validation, err := DecodeExecutionTaskJSON(missingReference)
+	if err != nil {
+		t.Fatalf("DecodeExecutionTaskJSON returned error: %v", err)
+	}
+	if decoded.ProjectID != 0 || decoded.Status != ExecutionTaskStatus("QUEUED") {
+		t.Fatalf("decoded task = %#v, want JSON values preserved for diagnostics", decoded)
+	}
+	assertExecutionValidationIssueSet(t, validation, []executionIssuePathCode{
+		{path: "projectId", code: ValidationIssueCodeRequired},
+		{path: "taskName", code: ValidationIssueCodeRequired},
+		{path: "status", code: ValidationIssueCodeInvalidEnum},
+	})
+
+	presentInvalidReference := []byte(`{"id":0,"projectId":0,"taskName":"daily generation","status":"RUNNING","startedAt":"2026-06-11T09:00:00Z","createdAt":"2026-06-11T08:59:00Z"}`)
+	_, validation, err = DecodeExecutionTaskJSON(presentInvalidReference)
+	if err != nil {
+		t.Fatalf("DecodeExecutionTaskJSON returned error: %v", err)
+	}
+	assertExecutionValidationIssueSet(t, validation, []executionIssuePathCode{
+		{path: "projectId", code: ValidationIssueCodeInvalidReference},
+	})
+}
+
+func TestDecodeGenerationJobJSONAppliesPresenceAndUpstreamReferenceBoundaries(t *testing.T) {
+	raw := []byte(`{"task":{"id":10,"projectId":20,"taskName":"daily generation","status":"RUNNING","startedAt":"2026-06-11T09:00:00Z","createdAt":"2026-06-11T08:59:00Z"},"tableResults":[{"id":0,"tableNameSnapshot":"orders","schemaNameSnapshot":"public","rowsWritten":0,"status":"SUCCESS","executionOrder":1,"createdAt":"2026-06-11T09:00:00Z","updatedAt":"2026-06-11T09:00:00Z"},{"id":0,"executionTaskId":11,"tableNameSnapshot":"customers","schemaNameSnapshot":"public","rowsWritten":0,"status":"SUCCESS","executionOrder":2,"createdAt":"2026-06-11T09:00:00Z","updatedAt":"2026-06-11T09:00:00Z"}]}`)
+
+	decoded, validation, err := DecodeGenerationJobJSON(raw)
+	if err != nil {
+		t.Fatalf("DecodeGenerationJobJSON returned error: %v", err)
+	}
+	if decoded.Task.ID != 10 || len(decoded.TableResults) != 2 {
+		t.Fatalf("decoded job = %#v, want task and table results preserved", decoded)
+	}
+	assertExecutionValidationIssueSet(t, validation, []executionIssuePathCode{
+		{path: "tableResults[0]", code: ValidationIssueCodeInvalidNestedModel},
+		{path: "tableResults[0].executionTaskId", code: ValidationIssueCodeRequired},
+		{path: "tableResults[1].executionTaskId", code: ValidationIssueCodeInvalidReference},
+	})
+}
+
+func TestExecutionDomainModelsDoNotExposeOutOfScopeLifecycleBehavior(t *testing.T) {
+	outOfScopeMethods := map[reflect.Type][]string{
+		reflect.TypeOf(GenerationJob{}):        {"Execute", "Plan", "PublishProgress", "BatchWrite", "Rollback"},
+		reflect.TypeOf(ExecutionTask{}):        {"Start", "Complete", "Fail", "TransitionTo", "EmitProgress"},
+		reflect.TypeOf(ExecutionTableResult{}): {"WriteBatch", "Rollback", "Retry", "SkipBecauseDependencyFailed"},
+	}
+	for typ, methodNames := range outOfScopeMethods {
+		for _, methodName := range methodNames {
+			if _, ok := typ.MethodByName(methodName); ok {
+				t.Fatalf("%s must not expose out-of-scope lifecycle method %s", typ.Name(), methodName)
+			}
+		}
+	}
+
+	outOfScopeFields := map[reflect.Type][]string{
+		reflect.TypeOf(GenerationJob{}):        {"Plan", "Progress", "Batches", "Transaction", "Service", "API", "UI"},
+		reflect.TypeOf(ExecutionTask{}):        {"Progress", "Events", "Rollback", "Connection", "Repository", "Facade"},
+		reflect.TypeOf(ExecutionTableResult{}): {"BatchSize", "GeneratedRows", "SQL", "RollbackState", "RuntimeEvent"},
+	}
+	for typ, fieldNames := range outOfScopeFields {
+		for _, fieldName := range fieldNames {
+			if _, ok := typ.FieldByName(fieldName); ok {
+				t.Fatalf("%s must not expose out-of-scope field %s", typ.Name(), fieldName)
+			}
+		}
+	}
+}
+
 type executionIssuePathCode struct {
 	path string
 	code ValidationIssueCode

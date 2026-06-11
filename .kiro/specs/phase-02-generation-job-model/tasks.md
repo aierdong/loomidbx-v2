@@ -50,7 +50,7 @@
   - _Boundary: SerializationTests_
   - _Depends: 2.1, 2.2_
 
-- [ ] 4.2 覆盖校验和边界测试 (P)
+- [x] 4.2 覆盖校验和边界测试 (P)
   - 测试基础校验、多错误返回、上游引用边界和 out-of-scope 未被实现。
   - 完成后，领域模型满足当前规格验收要求。
   - _Requirements: 1, 3, 4, 5_
