@@ -322,6 +322,130 @@ func TestExecutionTableResultPreservesUnknownStatusAndOmitEmptyOptionalFields(t 
 	}
 }
 
+func TestExecutionValidationIssueContract(t *testing.T) {
+	assertExecutionJSONTags(t, reflect.TypeOf(ValidationIssue{}), map[string]string{
+		"Path":    "path",
+		"Code":    "code",
+		"Message": "message",
+	})
+	assertExecutionStructJSONFieldSet(t, reflect.TypeOf(ValidationIssue{}), []string{"path", "code", "message"})
+	assertExecutionFieldType(t, reflect.TypeOf(ValidationIssue{}), "Path", reflect.TypeOf(""))
+	assertExecutionFieldType(t, reflect.TypeOf(ValidationIssue{}), "Code", reflect.TypeOf(ValidationIssueCode("")))
+	assertExecutionFieldType(t, reflect.TypeOf(ValidationIssue{}), "Message", reflect.TypeOf(""))
+
+	issue := ValidationIssue{
+		Path:    "tableResults[0].rowsWritten",
+		Code:    ValidationIssueCodeInvalidRange,
+		Message: "rowsWritten must be greater than or equal to zero",
+	}
+	encoded, err := json.Marshal(issue)
+	if err != nil {
+		t.Fatalf("Marshal(ValidationIssue) returned error: %v", err)
+	}
+	want := `{"path":"tableResults[0].rowsWritten","code":"INVALID_RANGE","message":"rowsWritten must be greater than or equal to zero"}`
+	if string(encoded) != want {
+		t.Fatalf("ValidationIssue JSON = %s, want %s", encoded, want)
+	}
+
+	var decoded ValidationIssue
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(ValidationIssue) returned error: %v", err)
+	}
+	if decoded != issue {
+		t.Fatalf("decoded ValidationIssue = %#v, want %#v", decoded, issue)
+	}
+}
+
+func TestExecutionValidationIssueCodesAreStableAndClassified(t *testing.T) {
+	codes := map[ValidationIssueCode]string{
+		ValidationIssueCodeRequired:                 "REQUIRED",
+		ValidationIssueCodeTooLong:                  "TOO_LONG",
+		ValidationIssueCodeInvalidEnum:              "INVALID_ENUM",
+		ValidationIssueCodeInvalidRange:             "INVALID_RANGE",
+		ValidationIssueCodeInvalidReference:         "INVALID_REFERENCE",
+		ValidationIssueCodeInvalidTimeRange:         "INVALID_TIME_RANGE",
+		ValidationIssueCodeInvalidNestedModel:       "INVALID_NESTED_MODEL",
+		ValidationIssueCodeSensitiveValueNotAllowed: "SENSITIVE_VALUE_NOT_ALLOWED",
+	}
+	for code, want := range codes {
+		if got := string(code); got != want {
+			t.Fatalf("ValidationIssueCode value = %q, want %q", got, want)
+		}
+		if !code.IsKnown() {
+			t.Fatalf("%s should be recognized as a known validation issue code", code)
+		}
+		if code.IsUnknown() {
+			t.Fatalf("%s should not be recognized as an unknown validation issue code", code)
+		}
+		if got := code.String(); got != want {
+			t.Fatalf("ValidationIssueCode.String() = %q, want %q", got, want)
+		}
+	}
+
+	unknown := ValidationIssueCode("FUTURE_CODE")
+	if unknown.IsKnown() {
+		t.Fatalf("unknown validation issue code %q should not be known", unknown)
+	}
+	if !unknown.IsUnknown() {
+		t.Fatalf("unknown validation issue code %q should be explicitly unknown", unknown)
+	}
+	if got := unknown.String(); got != "FUTURE_CODE" {
+		t.Fatalf("unknown validation issue code String() = %q, want preserved value", got)
+	}
+}
+
+func TestExecutionValidationResultSupportsMultipleIssues(t *testing.T) {
+	result := ValidationResult{}
+	if result.HasIssues() {
+		t.Fatalf("empty ValidationResult should not have issues")
+	}
+
+	result.AddIssue("projectId", ValidationIssueCodeRequired, "projectId is required")
+	result.AddIssue("tableResults[0].executionTaskId", ValidationIssueCodeInvalidReference, "executionTaskId must reference the task")
+	if !result.HasIssues() {
+		t.Fatalf("ValidationResult with issues should report issues")
+	}
+	if len(result.Issues) != 2 {
+		t.Fatalf("ValidationResult issues length = %d, want 2", len(result.Issues))
+	}
+	if result.Issues[0].Path != "projectId" || result.Issues[1].Path != "tableResults[0].executionTaskId" {
+		t.Fatalf("ValidationResult issues = %#v, want field paths preserved in order", result.Issues)
+	}
+
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal(ValidationResult) returned error: %v", err)
+	}
+	want := `{"issues":[{"path":"projectId","code":"REQUIRED","message":"projectId is required"},{"path":"tableResults[0].executionTaskId","code":"INVALID_REFERENCE","message":"executionTaskId must reference the task"}]}`
+	if string(encoded) != want {
+		t.Fatalf("ValidationResult JSON = %s, want %s", encoded, want)
+	}
+}
+
+func TestExecutionValidationIssueExposesOnlySafeMessageContract(t *testing.T) {
+	typ := reflect.TypeOf(ValidationIssue{})
+	if typ.NumField() != 3 {
+		t.Fatalf("ValidationIssue field count = %d, want only path, code, and safe message", typ.NumField())
+	}
+	for _, disallowed := range []string{"RawValue", "Value", "Details", "Cause", "Credential", "SQL", "GeneratedData"} {
+		if _, ok := typ.FieldByName(disallowed); ok {
+			t.Fatalf("ValidationIssue must not expose unsafe diagnostic field %s", disallowed)
+		}
+	}
+
+	issue := ValidationIssue{Path: "errorSnapshot.message", Code: ValidationIssueCodeSensitiveValueNotAllowed, Message: "message must not contain sensitive values"}
+	encoded, err := json.Marshal(issue)
+	if err != nil {
+		t.Fatalf("Marshal(ValidationIssue) returned error: %v", err)
+	}
+	jsonText := string(encoded)
+	for _, forbidden := range []string{"password", "credential", "select *", "generatedData"} {
+		if strings.Contains(strings.ToLower(jsonText), strings.ToLower(forbidden)) {
+			t.Fatalf("ValidationIssue JSON %s should not contain unsafe diagnostic content %q", jsonText, forbidden)
+		}
+	}
+}
+
 func assertExecutionJSONTags(t *testing.T, typ reflect.Type, expected map[string]string) {
 	t.Helper()
 	for fieldName, want := range expected {
