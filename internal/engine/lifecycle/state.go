@@ -1,6 +1,9 @@
 package lifecycle
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 // LifecycleState identifies the engine-internal runtime state for one lifecycle instance.
 type LifecycleState string
@@ -86,6 +89,9 @@ type Lifecycle struct {
 
 	// records stores accepted and rejected state transition attempts in chronological order.
 	records []TransitionRecord
+
+	// cancellationRequested stores the observable cancellation intent for downstream engine steps.
+	cancellationRequested atomic.Bool
 }
 
 // NewLifecycle creates a lifecycle in the initialized state, which is precheckable but not running.
