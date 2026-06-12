@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,6 +32,155 @@ func TestCoordinatorInvokesReplaceableDownstreamPortsInOrder(t *testing.T) {
 		t.Fatalf("Failure = %#v, want nil", result.Failure)
 	}
 	assertStringSlice(t, calls, []string{"precheck", "planner", "generation", "result"})
+}
+
+func TestCoordinatorMapsDownstreamStageFailuresToFailedTerminalState(t *testing.T) {
+	tests := []struct {
+		name             string
+		failure          LifecycleError
+		ports            func(*testing.T, *[]string, LifecycleError) DownstreamPorts
+		wantCalls        []string
+		wantFailureStage LifecycleStage
+		wantFieldPath    string
+	}{
+		{
+			name:             "planner failure stops before generation and result",
+			failure:          NewLifecycleError(LifecycleErrorCodeDownstreamFailure, LifecycleStagePlanner, "planner.dependencyPlan", "password=planner-secret host=db.internal:5432 SELECT * FROM users"),
+			wantCalls:        []string{"precheck", "planner"},
+			wantFailureStage: LifecycleStagePlanner,
+			wantFieldPath:    "planner.dependencyPlan",
+			ports: func(t *testing.T, calls *[]string, failure LifecycleError) DownstreamPorts {
+				return DownstreamPorts{
+					Precheck:   fakePrecheckPort{t: t, calls: calls, name: "precheck"},
+					Planner:    fakePlannerPort{t: t, calls: calls, name: "planner", result: NewDownstreamStageFailure(failure)},
+					Generation: fakeGenerationPort{t: t, calls: calls, name: "generation", result: NewDownstreamStageSuccess("must-not-run")},
+					Result:     fakeResultPort{t: t, calls: calls, name: "result", result: NewDownstreamStageSuccess(nil)},
+				}
+			},
+		},
+		{
+			name:             "generation failure stops before result",
+			failure:          NewLifecycleError(LifecycleErrorCodeDownstreamFailure, LifecycleStageGeneration, "generation.batch", "generated data: [{email:'a@example.test'}] token=raw-token"),
+			wantCalls:        []string{"precheck", "planner", "generation"},
+			wantFailureStage: LifecycleStageGeneration,
+			wantFieldPath:    "generation.batch",
+			ports: func(t *testing.T, calls *[]string, failure LifecycleError) DownstreamPorts {
+				return DownstreamPorts{
+					Precheck:   fakePrecheckPort{t: t, calls: calls, name: "precheck"},
+					Planner:    fakePlannerPort{t: t, calls: calls, name: "planner", result: NewDownstreamStageSuccess("opaque-plan")},
+					Generation: fakeGenerationPort{t: t, calls: calls, name: "generation", wantPlanArtifact: "opaque-plan", result: NewDownstreamStageFailure(failure)},
+					Result:     fakeResultPort{t: t, calls: calls, name: "result", result: NewDownstreamStageSuccess(nil)},
+				}
+			},
+		},
+		{
+			name:             "result failure becomes failed terminal state",
+			failure:          NewLifecycleError(LifecycleErrorCodeDownstreamFailure, LifecycleStageResult, "result.summary", "connection string password=summary-secret user SQL DELETE FROM users"),
+			wantCalls:        []string{"precheck", "planner", "generation", "result"},
+			wantFailureStage: LifecycleStageResult,
+			wantFieldPath:    "result.summary",
+			ports: func(t *testing.T, calls *[]string, failure LifecycleError) DownstreamPorts {
+				return DownstreamPorts{
+					Precheck:   fakePrecheckPort{t: t, calls: calls, name: "precheck"},
+					Planner:    fakePlannerPort{t: t, calls: calls, name: "planner", result: NewDownstreamStageSuccess("opaque-plan")},
+					Generation: fakeGenerationPort{t: t, calls: calls, name: "generation", wantPlanArtifact: "opaque-plan", result: NewDownstreamStageSuccess("opaque-generation")},
+					Result:     fakeResultPort{t: t, calls: calls, name: "result", wantPlanArtifact: "opaque-plan", wantGenerationArtifact: "opaque-generation", result: NewDownstreamStageFailure(failure)},
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []string
+			coordinator := NewLifecycleCoordinatorWithPorts(sequenceClock(
+				time.Date(2026, 6, 12, 16, 0, 0, 0, time.UTC),
+				time.Date(2026, 6, 12, 16, 1, 0, 0, time.UTC),
+				time.Date(2026, 6, 12, 16, 2, 0, 0, time.UTC),
+				time.Date(2026, 6, 12, 16, 3, 0, 0, time.UTC),
+			), tt.ports(t, &calls, tt.failure))
+
+			result := coordinator.Run(validGenerationJobSnapshot())
+
+			if result.State != LifecycleStateFailed {
+				t.Fatalf("State = %s, want %s", result.State, LifecycleStateFailed)
+			}
+			if result.StartedAt == nil {
+				t.Fatal("StartedAt = nil, want runtime start time before downstream failure")
+			}
+			if result.CompletedAt != nil {
+				t.Fatalf("CompletedAt = %v, want nil", result.CompletedAt)
+			}
+			assertDownstreamFailureSummary(t, result.Failure, tt.wantFailureStage, tt.wantFieldPath)
+			assertStringSlice(t, calls, tt.wantCalls)
+			assertTransitionPath(t, result.Transitions, []LifecycleState{
+				LifecycleStateInitialized,
+				LifecycleStatePrechecking,
+				LifecycleStateReady,
+				LifecycleStateRunning,
+				LifecycleStateFailed,
+			})
+		})
+	}
+}
+
+func TestCoordinatorSanitizesMalformedDownstreamFailureSummary(t *testing.T) {
+	var calls []string
+	failure := LifecycleError{
+		Code:        "RAW_DRIVER_CODE password=hunter2",
+		Stage:       LifecycleStageGeneration,
+		FieldPath:   "generation.raw",
+		SafeMessage: "password=hunter2 host=db.internal:5432 SELECT * FROM users generated data: [{email:'a@example.test'}]",
+	}
+	ports := DownstreamPorts{
+		Precheck:   fakePrecheckPort{calls: &calls, name: "precheck"},
+		Planner:    fakePlannerPort{calls: &calls, name: "planner", result: NewDownstreamStageSuccess("opaque-plan")},
+		Generation: fakeGenerationPort{calls: &calls, name: "generation", result: DownstreamStageResult{Status: DownstreamStageFailed, Failure: &failure}},
+		Result:     fakeResultPort{calls: &calls, name: "result", result: NewDownstreamStageSuccess(nil)},
+	}
+	coordinator := NewLifecycleCoordinatorWithPorts(sequenceClock(
+		time.Date(2026, 6, 12, 17, 0, 0, 0, time.UTC),
+		time.Date(2026, 6, 12, 17, 1, 0, 0, time.UTC),
+		time.Date(2026, 6, 12, 17, 2, 0, 0, time.UTC),
+		time.Date(2026, 6, 12, 17, 3, 0, 0, time.UTC),
+	), ports)
+
+	result := coordinator.Run(validGenerationJobSnapshot())
+
+	if result.State != LifecycleStateFailed {
+		t.Fatalf("State = %s, want %s", result.State, LifecycleStateFailed)
+	}
+	if result.CompletedAt != nil {
+		t.Fatalf("CompletedAt = %v, want nil", result.CompletedAt)
+	}
+	assertDownstreamFailureSummary(t, result.Failure, LifecycleStageGeneration, "generation.raw")
+	if result.Failure.Code != LifecycleErrorCodeDownstreamFailure {
+		t.Fatalf("Failure.Code = %s, want %s", result.Failure.Code, LifecycleErrorCodeDownstreamFailure)
+	}
+	if strings.Contains(result.Failure.Code.String(), "password") {
+		t.Fatalf("Failure.Code leaked raw downstream content: %q", result.Failure.Code)
+	}
+	assertStringSlice(t, calls, []string{"precheck", "planner", "generation"})
+}
+
+func assertDownstreamFailureSummary(t *testing.T, failure *LifecycleError, stage LifecycleStage, fieldPath string) {
+	t.Helper()
+	if failure == nil {
+		t.Fatal("Failure = nil, want safe downstream failure summary")
+	}
+	if failure.Code != LifecycleErrorCodeDownstreamFailure {
+		t.Fatalf("Failure.Code = %s, want %s", failure.Code, LifecycleErrorCodeDownstreamFailure)
+	}
+	if failure.Stage != stage {
+		t.Fatalf("Failure.Stage = %s, want %s", failure.Stage, stage)
+	}
+	if failure.FieldPath != fieldPath {
+		t.Fatalf("Failure.FieldPath = %q, want %q", failure.FieldPath, fieldPath)
+	}
+	if failure.SafeMessage != "downstream lifecycle stage failed" {
+		t.Fatalf("Failure.SafeMessage = %q, want generic downstream safe message", failure.SafeMessage)
+	}
+	assertNoSensitiveFragments(t, failure.SafeMessage)
 }
 
 func TestDownstreamStageFailureCarriesOnlySafeError(t *testing.T) {

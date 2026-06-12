@@ -111,6 +111,16 @@ func MapDownstreamFailure(stage LifecycleStage, fieldPath string, err error) Lif
 	)
 }
 
+// MapDownstreamStageFailure creates a safe downstream failure summary from a stage result.
+// It keeps only lifecycle-owned stage, field path, code, and a generic safe message.
+func MapDownstreamStageFailure(stage LifecycleStage, defaultFieldPath string, failure *LifecycleError) LifecycleError {
+	fieldPath := defaultFieldPath
+	if failure != nil && strings.TrimSpace(failure.FieldPath) != "" {
+		fieldPath = failure.FieldPath
+	}
+	return MapDownstreamFailure(stage, fieldPath, nil)
+}
+
 func defaultSafeMessage(code LifecycleErrorCode) string {
 	switch code {
 	case LifecycleErrorCodeRequired:

@@ -79,10 +79,21 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 
 	context := DownstreamContext{Input: input, Control: control}
 	plan := c.ports.Planner.Plan(context)
+	if plan.Status == DownstreamStageFailed {
+		return c.failFromDownstream(machine, input, precheck, control, startedAt, LifecycleStagePlanner, "planner", plan.Failure)
+	}
+
 	context.PlanArtifact = plan.Artifact
 	generation := c.ports.Generation.Generate(context)
+	if generation.Status == DownstreamStageFailed {
+		return c.failFromDownstream(machine, input, precheck, control, startedAt, LifecycleStageGeneration, "generation", generation.Failure)
+	}
+
 	context.GenerationArtifact = generation.Artifact
-	c.ports.Result.Summarize(context)
+	result := c.ports.Result.Summarize(context)
+	if result.Status == DownstreamStageFailed {
+		return c.failFromDownstream(machine, input, precheck, control, startedAt, LifecycleStageResult, "result", result.Failure)
+	}
 
 	completedAt := c.now()
 	machine.TransitionTo(LifecycleStateCompleted, completedAt)
@@ -94,6 +105,20 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 		StartedAt:   &startedAt,
 		CompletedAt: &completedAt,
 		Control:     control,
+		Transitions: machine.TransitionRecords(),
+	}
+}
+
+func (c LifecycleCoordinator) failFromDownstream(machine *Lifecycle, input *ExecutionInput, precheck PrecheckResult, control ControlToken, startedAt time.Time, stage LifecycleStage, fieldPath string, downstreamFailure *LifecycleError) LifecycleRunResult {
+	failure := MapDownstreamStageFailure(stage, fieldPath, downstreamFailure)
+	machine.TransitionTo(LifecycleStateFailed, c.now())
+	return LifecycleRunResult{
+		Input:       input,
+		Precheck:    precheck,
+		State:       machine.State(),
+		StartedAt:   &startedAt,
+		Control:     control,
+		Failure:     &failure,
 		Transitions: machine.TransitionRecords(),
 	}
 }
