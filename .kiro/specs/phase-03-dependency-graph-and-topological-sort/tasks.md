@@ -1,0 +1,159 @@
+# Implementation Plan
+
+> 任务边界约定：每个实现任务继承最近章节的边界；子任务上的显式 `_Boundary:` 和 `_Depends:` 行用于收窄该章节边界，并在存在时优先生效。
+
+- [ ] 1. 建立计划包基础模型
+- [ ] 1.1 定义计划输入与 ProjectTable 节点映射
+  - 建立从 Project/Schema 快照进入 dependency plan 的最小输入边界，保留 Project、ProjectTable、Schema Table 和稳定排序字段。
+  - 对缺少 ProjectTable 身份、Project 引用或 Schema Table 引用的输入返回字段级阻断问题。
+  - 完成后，有效 ProjectTable 集合可以生成不依赖 UI、Wails binding 或真实数据库连接的图节点输入。
+  - _Requirements: 1.1, 1.2, 1.3, 1.5_
+  - _Boundary: Plan Input Mapper_
+- [ ] 1.2 定义依赖图节点、边和边来源模型
+  - 定义 GraphNode、DependencyEdge、EdgeSource、DependencyGraph 和 canonical edge key。
+  - 表达边来源类型、来源身份、上游节点、下游节点和外部来源摘要。
+  - 完成后，图模型可以承载多来源去重边且不包含行数、生成数据或写入信息。
+  - _Requirements: 1.2, 2.2, 2.4, 3.3, 4.5_
+  - _Boundary: Dependency Graph Model_
+- [ ] 1.3 定义计划安全错误和阶段表达
+  - 建立计划错误码、阶段、字段路径、阻断标记和安全消息的统一表达。
+  - 将节点校验、未知关系类型、未知值来源、缺失端点、循环和不可排序都约束为安全错误摘要。
+  - 完成后，公开计划问题只包含安全摘要字段，不包含 SQL、连接详情、密码或生成数据。
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 7.1, 7.2, 7.3, 7.5_
+  - _Boundary: Safe Plan Error Mapper_
+
+- [ ] 2. 实现关系到依赖边的构建规则
+- [ ] 2.1 实现物理外键边映射
+  - 将 ForeignKey 映射为 `ReferencedTableID -> TableID` 的执行内依赖边。
+  - 对父表或子表缺失的外键返回字段级安全预检问题。
+  - 完成后，物理外键能够驱动被引用表先于外键所在表排序。
+  - _Requirements: 2.1, 2.2, 2.3, 2.5_
+  - _Boundary: Relation Edge Mapper_
+  - _Depends: 1.1, 1.2, 1.3_
+- [ ] 2.2 实现逻辑 TableRelation 边映射
+  - 将 TableRelation 映射为 `ParentTableID -> ChildTableID` 的执行内依赖边。
+  - 覆盖 PARENT_CHILD 和 JOIN_TABLE 关系类型，拒绝未知关系类型。
+  - 完成后，应用定义关系和 join-table 分支都能参与排序且不执行下游算法。
+  - _Requirements: 3.1, 3.5, 5.4, 8.1_
+  - _Boundary: Relation Edge Mapper_
+  - _Depends: 1.1, 1.2, 1.3_
+- [ ] 2.3 实现 ProjectTableRelation 值来源边映射
+  - 根据 FROM_EXECUTION、FROM_DB_QUERY 和 MERGED 区分当前执行依赖和外部值来源。
+  - 对要求当前执行父表但父 ProjectTable 缺失或无法映射的关系返回阻断错误。
+  - 完成后，Project 关系实例能够形成正确执行内依赖，同时不执行或解析 SQL。
+  - _Requirements: 3.2, 3.3, 3.4, 3.5, 7.2_
+  - _Boundary: Relation Edge Mapper_
+  - _Depends: 1.1, 1.2, 1.3_
+- [ ] 2.4 实现边去重和来源合并
+  - 使用 canonical edge key 合并相同上游和下游节点的多来源边。
+  - 保留确定性排序后的来源摘要，必要时产生非阻断重复来源警告。
+  - 完成后，重复物理或逻辑关系不会影响拓扑排序稳定性。
+  - _Requirements: 2.4, 8.1_
+  - _Boundary: Dependency Graph Builder_
+  - _Depends: 2.1, 2.2, 2.3_
+
+- [ ] 3. 实现拓扑排序和图诊断
+- [ ] 3.1 实现确定性拓扑排序
+  - 使用稳定键处理多个零入度节点，稳定键优先采用现有 ExecutionOrder，再使用 ProjectTable ID 和 TableID。
+  - 输出包含所有节点的 PlannedTable 顺序，包括孤立节点。
+  - 完成后，相同输入在不同运行中得到一致执行顺序。
+  - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - _Boundary: Topological Sorter_
+  - _Depends: 2.4_
+- [ ] 3.2 实现循环依赖检测和安全摘要
+  - 在排序无法消费所有节点时识别循环候选节点和相关边。
+  - 返回阻断预检错误，消息只包含安全循环摘要和字段路径。
+  - 完成后，循环图不会生成成功执行计划，也不会尝试自动拆环。
+  - _Requirements: 5.1, 5.3, 5.5, 7.1, 7.2_
+  - _Boundary: Topological Sorter, Graph Diagnostics_
+  - _Depends: 3.1_
+- [ ] 3.3 实现缺失节点、未知关系输入和不可排序诊断汇总
+  - 汇总图构建阶段的缺失端点、重复节点、未知关系类型和未知值来源问题。
+  - 区分阻断错误和非阻断警告，并按阻断状态决定是否允许排序结果通过。
+  - 完成后，图诊断可直接作为 lifecycle precheck 的安全问题集合。
+  - _Requirements: 5.2, 5.3, 5.4, 6.1, 6.3_
+  - _Boundary: Graph Diagnostics, Safe Plan Error Mapper_
+  - _Depends: 2.4, 3.2_
+
+- [ ] 4. 接入 dependency planner 和 lifecycle 接缝
+- [ ] 4.1 实现计划协调入口
+  - 串联输入映射、图构建、边去重、拓扑排序和诊断汇总。
+  - 成功时输出 ExecutionPlan，失败时输出 blocking errors 和 warnings。
+  - 完成后，调用方可以通过一个 plan 入口获得排序成功或安全失败结果。
+  - _Requirements: 4.1, 4.3, 4.4, 6.1, 6.2, 6.4_
+  - _Boundary: Dependency Planner_
+  - _Depends: 3.3_
+- [ ] 4.2 定义 lifecycle precheck/planner 兼容结果边界
+  - 提供与 lifecycle 预检聚合和 planner 阶段结果兼容的字段结构或转换函数。
+  - 确保阻断错误会阻止执行进入运行状态，警告不会阻止成功计划。
+  - 完成后，dependency planner 可作为 lifecycle planner seam 的实现接入。
+  - _Requirements: 6.1, 6.2, 6.3, 7.3_
+  - _Boundary: Lifecycle Planner Seam_
+  - _Depends: 4.1_
+- [ ] 4.3 保护 Phase 2 和 lifecycle 状态边界
+  - 确认计划结果不修改 ProjectTable.ExecutionOrder 持久化语义。
+  - 确认本规格不修改 lifecycle 内部状态枚举或 Phase 2 执行历史状态枚举。
+  - 完成后，排序算法只通过 ExecutionPlan 输出边界向后续规格传递。
+  - _Requirements: 6.5, 8.4_
+  - _Boundary: Domain and Lifecycle Boundary_
+  - _Depends: 4.1_
+
+- [ ] 5. 覆盖核心行为测试
+- [ ] 5.1 覆盖节点输入和基础校验测试
+  - 验证有效 ProjectTable 集合生成图节点。
+  - 验证缺失 ProjectTable 身份、Project 引用、Schema Table 引用和重复 TableID 的字段级问题。
+  - 完成后，节点测试覆盖基础输入边界和安全错误摘要。
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 8.1_
+  - _Boundary: Plan Input Mapper, Safe Plan Error Mapper_
+  - _Depends: 1.1, 1.3_
+- [ ] 5.2 覆盖关系边构建和去重测试
+  - 验证外键、逻辑关系、Project 关系实例的方向和来源摘要。
+  - 验证 FROM_DB_QUERY、MERGED、缺失父表、未知关系类型和重复边处理。
+  - 完成后，边构建测试证明所有关系来源都按本规格边界参与排序。
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 3.4, 3.5, 8.1_
+  - _Boundary: Relation Edge Mapper, Dependency Graph Builder_
+  - _Depends: 2.4_
+- [ ] 5.3 覆盖稳定拓扑排序测试
+  - 验证链式依赖、分支依赖、多零入度节点和孤立节点的稳定顺序。
+  - 验证每条边的上游节点都早于下游节点。
+  - 完成后，排序测试证明相同输入可以产生确定性 ExecutionPlan。
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 8.1_
+  - _Boundary: Topological Sorter_
+  - _Depends: 3.1_
+- [ ] 5.4 覆盖循环、缺失和不可排序诊断测试
+  - 验证简单环、多节点环、缺失端点、未知关系类型、未知值来源和不可排序图返回阻断错误。
+  - 验证失败时不会输出成功计划，也不会修改输入关系配置。
+  - 完成后，诊断测试证明不可执行图会在预检阶段被阻止。
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 8.2_
+  - _Boundary: Graph Diagnostics, Topological Sorter_
+  - _Depends: 3.2, 3.3_
+- [ ] 5.5 覆盖安全错误过滤测试
+  - 使用包含密码、用户 SQL、连接详情和生成数据内容的来源输入验证公开消息已安全化。
+  - 验证 PlanIssue 只暴露错误码、阶段、字段路径、安全消息和阻断标记。
+  - 完成后，测试输出中不会出现敏感原文或原始错误载荷。
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
+  - _Boundary: Safe Plan Error Mapper_
+  - _Depends: 1.3, 4.2_
+
+- [ ] 6. 覆盖接缝与边界验证
+- [ ] 6.1 覆盖 lifecycle planner/precheck 接缝测试
+  - 使用 fake lifecycle 接缝验证成功计划、阻断错误和非阻断警告可被聚合。
+  - 验证阻断错误阻止启动语义，警告不阻止计划成功。
+  - 完成后，dependency planner 可作为 lifecycle planner seam 的替换实现。
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 8.3_
+  - _Boundary: Lifecycle Planner Seam, Dependency Planner_
+  - _Depends: 4.2_
+- [ ] 6.2 覆盖 engine 包依赖边界测试
+  - 验证 plan 包不依赖 Wails、Vue、前端 API、真实数据库 driver、store 或 facade 包。
+  - 验证计划层没有按数据库产品名称硬编码业务分支。
+  - 完成后，边界测试可阻止排序规则流入 UI、binding 或数据库驱动层。
+  - _Requirements: 1.5, 2.5, 8.4_
+  - _Boundary: Boundary Tests_
+  - _Depends: 4.3_
+- [ ] 6.3 覆盖未来能力未提前实现的边界测试
+  - 验证测试和实现中不存在行数规划、生成上下文、生成器注册表、批量生成循环、writer adapter、事务或真实写入行为。
+  - 验证 ExecutionPlan 只表达表级顺序和依赖边，不承载未来规格的业务算法。
+  - 完成后，本规格可通过测试证明只实现依赖图和拓扑排序边界。
+  - _Requirements: 4.5, 5.5, 6.5, 8.5_
+  - _Boundary: Boundary Tests, Future Capability Boundary_
+  - _Depends: 4.3_

@@ -145,7 +145,7 @@ internal/domain/execution/execution_test.go
 | `TableID` | `tableId,omitempty` | `*int64` | 否 | FK → `DbTable`；表被删除时允许为空 |
 | `TableNameSnapshot` | `tableNameSnapshot` | `string` | 是 | 执行时表名快照，不能为空，最大长度 255 |
 | `SchemaNameSnapshot` | `schemaNameSnapshot` | `string` | 是 | 执行时 Schema 名快照，不能为空，最大长度 255 |
-| `RowsWritten` | `rowsWritten` | `int` | 是 | 成功写入行数，必须大于等于 0 |
+| `RowsWritten` | `rowsWritten` | `int64` | 是 | 成功写入行数，必须大于等于 0 |
 | `Status` | `status` | `ExecutionTableStatus` | 是 | 枚举见 `ExecutionTableStatus` |
 | `ErrorSnapshot` | `errorSnapshot,omitempty` | `*ExecutionErrorSnapshot` | 否 | 失败时的安全错误快照 |
 | `ExecutionOrder` | `executionOrder` | `int` | 是 | 实际执行顺序，必须从 1 开始 |

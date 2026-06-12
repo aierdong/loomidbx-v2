@@ -20,7 +20,7 @@ type ExecutionTableResult struct {
 	SchemaNameSnapshot string `json:"schemaNameSnapshot"`
 
 	// RowsWritten stores the number of rows successfully written for this table.
-	RowsWritten int `json:"rowsWritten"`
+	RowsWritten int64 `json:"rowsWritten"`
 
 	// Status stores the current or final table-level status as a stable string-backed enum.
 	Status ExecutionTableStatus `json:"status"`

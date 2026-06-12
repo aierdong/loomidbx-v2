@@ -58,6 +58,7 @@ func TestExecutionDomainScaffoldExportsStableShapes(t *testing.T) {
 	assertExecutionFieldType(t, reflect.TypeOf(ExecutionTask{}), "StartedAt", reflect.TypeOf(time.Time{}))
 	assertExecutionFieldType(t, reflect.TypeOf(ExecutionTask{}), "EndedAt", reflect.TypeOf((*time.Time)(nil)))
 	assertExecutionFieldType(t, reflect.TypeOf(ExecutionTask{}), "CreatedAt", reflect.TypeOf(time.Time{}))
+	assertExecutionFieldType(t, reflect.TypeOf(ExecutionTableResult{}), "RowsWritten", reflect.TypeOf(int64(0)))
 	assertExecutionFieldType(t, reflect.TypeOf(ExecutionTableResult{}), "ErrorSnapshot", reflect.TypeOf((*ExecutionErrorSnapshot)(nil)))
 }
 
