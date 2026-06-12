@@ -9,7 +9,7 @@ func AggregatePrecheck(input *ExecutionInput, machine *Lifecycle, base PrecheckR
 	if input == nil {
 		result.addBlockingIssue("input", LifecycleErrorCodeRequired, "execution input is required before execution can start")
 	}
-	if machine == nil || !machine.CanPrecheck() {
+	if machine == nil || !canAggregatePrecheck(machine.State()) {
 		state := ""
 		if machine != nil {
 			state = machine.State().String()
@@ -24,6 +24,10 @@ func AggregatePrecheck(input *ExecutionInput, machine *Lifecycle, base PrecheckR
 
 	result.Passed = len(result.BlockingErrors) == 0
 	return result
+}
+
+func canAggregatePrecheck(state LifecycleState) bool {
+	return state == LifecycleStateInitialized || state == LifecycleStatePrechecking
 }
 
 func (r *PrecheckResult) append(other PrecheckResult) {
