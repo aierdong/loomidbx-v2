@@ -148,6 +148,101 @@ func TestLifecycleTerminalStateRejectsFurtherTransitions(t *testing.T) {
 	}
 }
 
+func TestLifecycleAllowsSpecifiedTerminalPaths(t *testing.T) {
+	base := time.Date(2026, 6, 12, 10, 20, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		path []LifecycleState
+	}{
+		{
+			name: "precheck failure",
+			path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateFailed},
+		},
+		{
+			name: "running cancellation",
+			path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCancelling, LifecycleStateCancelled},
+		},
+		{
+			name: "running failure",
+			path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateFailed},
+		},
+		{
+			name: "running completion",
+			path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCompleted},
+		},
+		{
+			name: "cancelling failure",
+			path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCancelling, LifecycleStateFailed},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			machine := NewLifecycle()
+			from := LifecycleStateInitialized
+			for index, state := range test.path {
+				occurredAt := base.Add(time.Duration(index) * time.Minute)
+				result := machine.TransitionTo(state, occurredAt)
+				if !result.Accepted {
+					t.Fatalf("transition %s -> %s rejected: %#v", from, state, result.Error)
+				}
+				assertTransitionRecord(t, result.Record, from, state, occurredAt, false)
+				from = state
+			}
+			if !machine.State().IsTerminal() {
+				t.Fatalf("State = %s, want terminal", machine.State())
+			}
+			if machine.State() != test.path[len(test.path)-1] {
+				t.Fatalf("State = %s, want %s", machine.State(), test.path[len(test.path)-1])
+			}
+			if len(machine.TransitionRecords()) != len(test.path) {
+				t.Fatalf("TransitionRecords length = %d, want %d", len(machine.TransitionRecords()), len(test.path))
+			}
+		})
+	}
+}
+
+func TestLifecycleTerminalOutcomesAreMutuallyExclusive(t *testing.T) {
+	base := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		path       []LifecycleState
+		competitor LifecycleState
+	}{
+		{name: "completed rejects failure", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCompleted}, competitor: LifecycleStateFailed},
+		{name: "completed rejects cancellation", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCompleted}, competitor: LifecycleStateCancelling},
+		{name: "failed rejects completion", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateFailed}, competitor: LifecycleStateCompleted},
+		{name: "failed rejects cancellation", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateFailed}, competitor: LifecycleStateCancelling},
+		{name: "cancelled rejects completion", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCancelling, LifecycleStateCancelled}, competitor: LifecycleStateCompleted},
+		{name: "cancelled rejects failure", path: []LifecycleState{LifecycleStatePrechecking, LifecycleStateReady, LifecycleStateRunning, LifecycleStateCancelling, LifecycleStateCancelled}, competitor: LifecycleStateFailed},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			machine := NewLifecycle()
+			for index, state := range test.path {
+				result := machine.TransitionTo(state, base.Add(time.Duration(index)*time.Minute))
+				if !result.Accepted {
+					t.Fatalf("transition to %s rejected: %#v", state, result.Error)
+				}
+			}
+			terminal := machine.State()
+
+			result := machine.TransitionTo(test.competitor, base.Add(20*time.Minute))
+
+			if result.Accepted {
+				t.Fatalf("terminal %s accepted competing terminal/control state %s", terminal, test.competitor)
+			}
+			if machine.State() != terminal {
+				t.Fatalf("State = %s, want terminal %s", machine.State(), terminal)
+			}
+			if result.Error == nil || result.Error.Code != LifecycleErrorCodeStateConflict {
+				t.Fatalf("expected terminal conflict error, got %#v", result.Error)
+			}
+		})
+	}
+}
+
 func assertTransitionRecord(t *testing.T, record TransitionRecord, from LifecycleState, to LifecycleState, occurredAt time.Time, rejected bool) {
 	t.Helper()
 	if record.From != from {
