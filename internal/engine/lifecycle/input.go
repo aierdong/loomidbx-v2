@@ -9,30 +9,21 @@ import (
 )
 
 // PrecheckIssueCode identifies a stable machine-readable lifecycle precheck issue category.
-type PrecheckIssueCode = domainexecution.ValidationIssueCode
+type PrecheckIssueCode = LifecycleErrorCode
 
 const (
 	// PrecheckIssueCodeRequired reports that a required lifecycle input field is missing or blank.
-	PrecheckIssueCodeRequired PrecheckIssueCode = domainexecution.ValidationIssueCodeRequired
+	PrecheckIssueCodeRequired PrecheckIssueCode = LifecycleErrorCodeRequired
 
 	// PrecheckIssueCodeInvalidReference reports that a lifecycle input identity or parent reference is invalid.
-	PrecheckIssueCodeInvalidReference PrecheckIssueCode = domainexecution.ValidationIssueCodeInvalidReference
+	PrecheckIssueCodeInvalidReference PrecheckIssueCode = LifecycleErrorCodeInvalidReference
 
 	// PrecheckIssueCodeInvalidRange reports that a lifecycle input numeric boundary is outside the accepted range.
-	PrecheckIssueCodeInvalidRange PrecheckIssueCode = domainexecution.ValidationIssueCodeInvalidRange
+	PrecheckIssueCodeInvalidRange PrecheckIssueCode = LifecycleErrorCodeInvalidRange
 )
 
 // PrecheckIssue is a field-level lifecycle precheck problem with a safe diagnostic message.
-type PrecheckIssue struct {
-	// FieldPath is the input field path, such as task.id or tableResults[0].tableNameSnapshot.
-	FieldPath string
-
-	// Code is the stable machine-readable issue category.
-	Code PrecheckIssueCode
-
-	// SafeMessage is a user-readable message that does not echo credentials, SQL, connection details, or generated data.
-	SafeMessage string
-}
+type PrecheckIssue = LifecycleError
 
 // PrecheckResult summarizes whether lifecycle precheck allows execution to start.
 type PrecheckResult struct {
@@ -153,11 +144,7 @@ func validateTableBoundary(result *PrecheckResult, taskID int64, tableResults []
 }
 
 func (r *PrecheckResult) addBlockingIssue(fieldPath string, code PrecheckIssueCode, safeMessage string) {
-	r.BlockingErrors = append(r.BlockingErrors, PrecheckIssue{
-		FieldPath:   fieldPath,
-		Code:        code,
-		SafeMessage: safeMessage,
-	})
+	r.BlockingErrors = append(r.BlockingErrors, NewLifecycleError(code, LifecycleStageInputValidation, fieldPath, safeMessage))
 }
 
 func cloneInt64Pointer(value *int64) *int64 {
