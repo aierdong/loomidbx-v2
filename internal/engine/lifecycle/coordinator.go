@@ -8,7 +8,8 @@ import (
 
 // LifecycleCoordinator runs the current lifecycle boundary for one execution task snapshot.
 type LifecycleCoordinator struct {
-	now func() time.Time
+	now   func() time.Time
+	ports DownstreamPorts
 }
 
 // LifecycleRunResult is the final coordinator result for the current lifecycle boundary.
@@ -40,10 +41,15 @@ type LifecycleRunResult struct {
 
 // NewLifecycleCoordinator creates a coordinator with an injectable clock for deterministic lifecycle tests.
 func NewLifecycleCoordinator(now func() time.Time) LifecycleCoordinator {
+	return NewLifecycleCoordinatorWithPorts(now, NoopDownstreamPorts())
+}
+
+// NewLifecycleCoordinatorWithPorts creates a coordinator with replaceable downstream lifecycle seams.
+func NewLifecycleCoordinatorWithPorts(now func() time.Time, ports DownstreamPorts) LifecycleCoordinator {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
-	return LifecycleCoordinator{now: now}
+	return LifecycleCoordinator{now: now, ports: normalizeDownstreamPorts(ports)}
 }
 
 // Run maps a generation job snapshot, prechecks it, starts execution, and completes the current boundary.
@@ -53,7 +59,7 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 	input, basePrecheck := MapExecutionInputFromGenerationJob(job)
 
 	machine.TransitionTo(LifecycleStatePrechecking, c.now())
-	precheck := AggregatePrecheck(input, machine, basePrecheck)
+	precheck := AggregatePrecheck(input, machine, basePrecheck, c.downstreamPrecheck(input, control))
 	if !precheck.Passed {
 		failure := firstPrecheckFailure(precheck)
 		machine.TransitionTo(LifecycleStateFailed, c.now())
@@ -70,6 +76,14 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 	machine.TransitionTo(LifecycleStateReady, c.now())
 	startedAt := c.now()
 	machine.TransitionTo(LifecycleStateRunning, startedAt)
+
+	context := DownstreamContext{Input: input, Control: control}
+	plan := c.ports.Planner.Plan(context)
+	context.PlanArtifact = plan.Artifact
+	generation := c.ports.Generation.Generate(context)
+	context.GenerationArtifact = generation.Artifact
+	c.ports.Result.Summarize(context)
+
 	completedAt := c.now()
 	machine.TransitionTo(LifecycleStateCompleted, completedAt)
 
@@ -91,4 +105,28 @@ func firstPrecheckFailure(precheck PrecheckResult) *LifecycleError {
 	failure := precheck.BlockingErrors[0]
 	failure.Stage = LifecycleStagePrecheck
 	return &failure
+}
+
+func normalizeDownstreamPorts(ports DownstreamPorts) DownstreamPorts {
+	defaults := NoopDownstreamPorts()
+	if ports.Precheck == nil {
+		ports.Precheck = defaults.Precheck
+	}
+	if ports.Planner == nil {
+		ports.Planner = defaults.Planner
+	}
+	if ports.Generation == nil {
+		ports.Generation = defaults.Generation
+	}
+	if ports.Result == nil {
+		ports.Result = defaults.Result
+	}
+	return ports
+}
+
+func (c LifecycleCoordinator) downstreamPrecheck(input *ExecutionInput, control ControlToken) PrecheckResult {
+	if c.ports.Precheck == nil || input == nil {
+		return PrecheckResult{Passed: true}
+	}
+	return c.ports.Precheck.Precheck(DownstreamContext{Input: input, Control: control})
 }
