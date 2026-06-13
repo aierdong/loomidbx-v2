@@ -99,6 +99,26 @@ func TestNewLifecycleErrorReplacesSensitiveSafeMessage(t *testing.T) {
 	}
 }
 
+func TestNewLifecycleErrorSanitizesPublicSummaryFields(t *testing.T) {
+	mapped := NewLifecycleError(
+		"RAW_DRIVER_CODE password=hunter2",
+		"PRECHECK host=db.internal SELECT * FROM users",
+		"generation.generatedData password=secret",
+		"generated data: [{email:'a@example.test'}] connection string password=secret",
+	)
+
+	if mapped.Code != LifecycleErrorCodeSensitiveValueNotAllowed {
+		t.Fatalf("Code = %s, want %s", mapped.Code, LifecycleErrorCodeSensitiveValueNotAllowed)
+	}
+	if mapped.Stage != LifecycleStagePrecheck {
+		t.Fatalf("Stage = %s, want %s", mapped.Stage, LifecycleStagePrecheck)
+	}
+	if mapped.FieldPath != "lifecycle.error" {
+		t.Fatalf("FieldPath = %q, want lifecycle.error", mapped.FieldPath)
+	}
+	assertNoSensitiveLifecycleErrorContent(t, mapped)
+}
+
 func assertLifecycleError(t *testing.T, issues []LifecycleError, stage LifecycleStage, fieldPath string, code LifecycleErrorCode) {
 	t.Helper()
 	for _, issue := range issues {
@@ -108,6 +128,14 @@ func assertLifecycleError(t *testing.T, issues []LifecycleError, stage Lifecycle
 		}
 	}
 	t.Fatalf("expected lifecycle error stage=%s fieldPath=%s code=%s in %#v", stage, fieldPath, code, issues)
+}
+
+func assertNoSensitiveLifecycleErrorContent(t *testing.T, issue LifecycleError) {
+	t.Helper()
+	assertNoSensitiveFragments(t, issue.Code.String())
+	assertNoSensitiveFragments(t, issue.Stage.String())
+	assertNoSensitiveFragments(t, issue.FieldPath)
+	assertNoSensitiveFragments(t, issue.SafeMessage)
 }
 
 func assertNoSensitiveFragments(t *testing.T, value string) {

@@ -112,6 +112,13 @@ func TestCoordinatorMapsDownstreamStageFailuresToFailedTerminalState(t *testing.
 				t.Fatalf("CompletedAt = %v, want nil", result.CompletedAt)
 			}
 			assertDownstreamFailureSummary(t, result.Failure, tt.wantFailureStage, tt.wantFieldPath)
+			if !result.Snapshot.EndedAt.Equal(result.Transitions[len(result.Transitions)-1].OccurredAt) {
+				t.Fatalf("Snapshot.EndedAt = %v, want failed transition time %s", result.Snapshot.EndedAt, result.Transitions[len(result.Transitions)-1].OccurredAt)
+			}
+			assertDownstreamFailureSummary(t, result.Snapshot.Failure, tt.wantFailureStage, tt.wantFieldPath)
+			if result.Snapshot.CancellationRequested {
+				t.Fatal("failed downstream lifecycle should not mark cancellation intent")
+			}
 			assertStringSlice(t, calls, tt.wantCalls)
 			assertTransitionPath(t, result.Transitions, []LifecycleState{
 				LifecycleStateInitialized,
@@ -129,7 +136,7 @@ func TestCoordinatorSanitizesMalformedDownstreamFailureSummary(t *testing.T) {
 	failure := LifecycleError{
 		Code:        "RAW_DRIVER_CODE password=hunter2",
 		Stage:       LifecycleStageGeneration,
-		FieldPath:   "generation.raw",
+		FieldPath:   "generation.raw password=hunter2 host=db.internal SELECT * FROM users generated data",
 		SafeMessage: "password=hunter2 host=db.internal:5432 SELECT * FROM users generated data: [{email:'a@example.test'}]",
 	}
 	ports := DownstreamPorts{
@@ -153,7 +160,8 @@ func TestCoordinatorSanitizesMalformedDownstreamFailureSummary(t *testing.T) {
 	if result.CompletedAt != nil {
 		t.Fatalf("CompletedAt = %v, want nil", result.CompletedAt)
 	}
-	assertDownstreamFailureSummary(t, result.Failure, LifecycleStageGeneration, "generation.raw")
+	assertDownstreamFailureSummary(t, result.Failure, LifecycleStageGeneration, "generation")
+	assertNoSensitiveLifecycleErrorContent(t, *result.Failure)
 	if result.Failure.Code != LifecycleErrorCodeDownstreamFailure {
 		t.Fatalf("Failure.Code = %s, want %s", result.Failure.Code, LifecycleErrorCodeDownstreamFailure)
 	}
@@ -227,13 +235,13 @@ func TestDownstreamPrecheckResultIsAggregatedBeforeStart(t *testing.T) {
 }
 
 func TestDownstreamPortsStayMinimalAndOpaque(t *testing.T) {
-	resultType := reflect.TypeOf(DownstreamStageResult{})
+	resultType := reflect.TypeFor[DownstreamStageResult]()
 	assertStructFields(t, resultType, []string{"Status", "Failure", "Artifact"})
 	if resultType.Field(2).Type.Kind() != reflect.Interface {
 		t.Fatalf("Artifact kind = %s, want opaque interface", resultType.Field(2).Type.Kind())
 	}
 
-	contextType := reflect.TypeOf(DownstreamContext{})
+	contextType := reflect.TypeFor[DownstreamContext]()
 	assertStructFields(t, contextType, []string{"Input", "Control", "PlanArtifact", "GenerationArtifact"})
 	for _, disallowed := range []string{"DependencyGraph", "RowCountPlan", "GeneratorRegistry", "BatchLoop", "ResultAggregator", "WriterAdapter", "Database"} {
 		if _, ok := resultType.FieldByName(disallowed); ok {

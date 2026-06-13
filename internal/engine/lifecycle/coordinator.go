@@ -37,6 +37,9 @@ type LifecycleRunResult struct {
 
 	// Transitions stores accepted and rejected lifecycle transition records.
 	Transitions []TransitionRecord
+
+	// Snapshot stores the lifecycle-owned final state view for history, API, or UI boundaries.
+	Snapshot LifecycleSnapshot
 }
 
 // NewLifecycleCoordinator creates a coordinator with an injectable clock for deterministic lifecycle tests.
@@ -62,15 +65,9 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 	precheck := AggregatePrecheck(input, machine, basePrecheck, c.downstreamPrecheck(input, control))
 	if !precheck.Passed {
 		failure := firstPrecheckFailure(precheck)
-		machine.TransitionTo(LifecycleStateFailed, c.now())
-		return LifecycleRunResult{
-			Input:       input,
-			Precheck:    precheck,
-			State:       machine.State(),
-			Control:     control,
-			Failure:     failure,
-			Transitions: machine.TransitionRecords(),
-		}
+		endedAt := c.now()
+		machine.TransitionTo(LifecycleStateFailed, endedAt)
+		return newLifecycleRunResult(machine, input, precheck, nil, &endedAt, control, failure)
 	}
 
 	machine.TransitionTo(LifecycleStateReady, c.now())
@@ -98,28 +95,33 @@ func (c LifecycleCoordinator) Run(job domainexecution.GenerationJob) LifecycleRu
 	completedAt := c.now()
 	machine.TransitionTo(LifecycleStateCompleted, completedAt)
 
-	return LifecycleRunResult{
-		Input:       input,
-		Precheck:    precheck,
-		State:       machine.State(),
-		StartedAt:   &startedAt,
-		CompletedAt: &completedAt,
-		Control:     control,
-		Transitions: machine.TransitionRecords(),
-	}
+	return newLifecycleRunResult(machine, input, precheck, &startedAt, &completedAt, control, nil)
 }
 
 func (c LifecycleCoordinator) failFromDownstream(machine *Lifecycle, input *ExecutionInput, precheck PrecheckResult, control ControlToken, startedAt time.Time, stage LifecycleStage, fieldPath string, downstreamFailure *LifecycleError) LifecycleRunResult {
 	failure := MapDownstreamStageFailure(stage, fieldPath, downstreamFailure)
-	machine.TransitionTo(LifecycleStateFailed, c.now())
+	endedAt := c.now()
+	machine.TransitionTo(LifecycleStateFailed, endedAt)
+	return newLifecycleRunResult(machine, input, precheck, &startedAt, &endedAt, control, &failure)
+}
+
+func newLifecycleRunResult(machine *Lifecycle, input *ExecutionInput, precheck PrecheckResult, startedAt *time.Time, endedAt *time.Time, control ControlToken, failure *LifecycleError) LifecycleRunResult {
+	transitions := machine.TransitionRecords()
+	snapshot := NewLifecycleSnapshot(machine.State(), startedAt, endedAt, control.CancellationRequested(), failure, transitions)
+	var completedAt *time.Time
+	if snapshot.State == LifecycleStateCompleted {
+		completedAt = cloneTimePointer(snapshot.EndedAt)
+	}
 	return LifecycleRunResult{
 		Input:       input,
 		Precheck:    precheck,
-		State:       machine.State(),
-		StartedAt:   &startedAt,
+		State:       snapshot.State,
+		StartedAt:   cloneTimePointer(snapshot.StartedAt),
+		CompletedAt: completedAt,
 		Control:     control,
-		Failure:     &failure,
-		Transitions: machine.TransitionRecords(),
+		Failure:     cloneLifecycleErrorPointer(snapshot.Failure),
+		Transitions: cloneTransitionRecords(transitions),
+		Snapshot:    snapshot,
 	}
 }
 

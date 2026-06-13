@@ -76,6 +76,16 @@ type LifecycleError struct {
 // NewLifecycleError creates a lifecycle safe error summary from already-classified error data.
 // If the provided message is blank or contains sensitive content, it is replaced with a generic safe message.
 func NewLifecycleError(code LifecycleErrorCode, stage LifecycleStage, fieldPath string, safeMessage string) LifecycleError {
+	field := strings.TrimSpace(fieldPath)
+	if containsSensitiveLifecycleContent(code.String()) || containsSensitiveLifecycleContent(stage.String()) || containsSensitiveLifecycleContent(field) {
+		return LifecycleError{
+			Code:        LifecycleErrorCodeSensitiveValueNotAllowed,
+			Stage:       safeLifecycleStage(stage),
+			FieldPath:   "lifecycle.error",
+			SafeMessage: defaultSafeMessage(LifecycleErrorCodeSensitiveValueNotAllowed),
+		}
+	}
+
 	message := strings.TrimSpace(safeMessage)
 	if message == "" || containsSensitiveLifecycleContent(message) {
 		message = defaultSafeMessage(code)
@@ -84,7 +94,7 @@ func NewLifecycleError(code LifecycleErrorCode, stage LifecycleStage, fieldPath 
 	return LifecycleError{
 		Code:        code,
 		Stage:       stage,
-		FieldPath:   strings.TrimSpace(fieldPath),
+		FieldPath:   field,
 		SafeMessage: message,
 	}
 }
@@ -115,10 +125,17 @@ func MapDownstreamFailure(stage LifecycleStage, fieldPath string, err error) Lif
 // It keeps only lifecycle-owned stage, field path, code, and a generic safe message.
 func MapDownstreamStageFailure(stage LifecycleStage, defaultFieldPath string, failure *LifecycleError) LifecycleError {
 	fieldPath := defaultFieldPath
-	if failure != nil && strings.TrimSpace(failure.FieldPath) != "" {
+	if failure != nil && strings.TrimSpace(failure.FieldPath) != "" && !containsSensitiveLifecycleContent(failure.FieldPath) {
 		fieldPath = failure.FieldPath
 	}
 	return MapDownstreamFailure(stage, fieldPath, nil)
+}
+
+func safeLifecycleStage(stage LifecycleStage) LifecycleStage {
+	if strings.TrimSpace(stage.String()) == "" || containsSensitiveLifecycleContent(stage.String()) {
+		return LifecycleStagePrecheck
+	}
+	return stage
 }
 
 func defaultSafeMessage(code LifecycleErrorCode) string {

@@ -71,6 +71,38 @@ func TestRequestCancellationRejectsNonRunningLifecycleWithoutMarkingIntent(t *te
 	}
 }
 
+func TestRequestCancellationRejectsTerminalLifecycleWithoutChangingOutcome(t *testing.T) {
+	machine := NewLifecycle()
+	base := time.Date(2026, 6, 12, 11, 15, 0, 0, time.UTC)
+	for index, state := range []LifecycleState{
+		LifecycleStatePrechecking,
+		LifecycleStateReady,
+		LifecycleStateRunning,
+		LifecycleStateCompleted,
+	} {
+		result := machine.TransitionTo(state, base.Add(time.Duration(index)*time.Minute))
+		if !result.Accepted {
+			t.Fatalf("transition to %s rejected: %#v", state, result.Error)
+		}
+	}
+	observed := machine.ControlToken()
+
+	result := machine.RequestCancellation(base.Add(10 * time.Minute))
+
+	if result.Accepted {
+		t.Fatal("terminal lifecycle should reject cancellation request")
+	}
+	if machine.State() != LifecycleStateCompleted {
+		t.Fatalf("State = %s, want %s", machine.State(), LifecycleStateCompleted)
+	}
+	if observed.CancellationRequested() {
+		t.Fatal("rejected terminal cancellation request must not mark cancellation intent")
+	}
+	if result.Error == nil || result.Error.Code != LifecycleErrorCodeStateConflict {
+		t.Fatalf("expected terminal cancellation conflict error, got %#v", result.Error)
+	}
+}
+
 func newRunningLifecycle(t *testing.T) *Lifecycle {
 	t.Helper()
 	machine := NewLifecycle()
