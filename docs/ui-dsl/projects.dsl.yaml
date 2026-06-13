@@ -4,9 +4,10 @@ page:
   layout: sidebar-shell
 
   spec:
-    summary: "Project CRUD page — lists LoomiDBX projects each with an ordered table configuration; supports create, edit, run, delete, and execution history"
+    summary: "Project CRUD page — lists LoomiDBX projects each with an ordered table configuration; supports create, edit, clone, subset creation, run, delete, and execution history"
     notes:
-      - "create and edit share project-form modal; dialog-mode set by create-project vs edit-project trigger"
+      - "create, edit, and clone share project-form modal; dialog-mode set by create-project, edit-project, or clone-project trigger"
+      - "subset creation starts from an existing project's table configuration and saves a new independent Project"
       - "execution-history covers completed runs only; in-flight execution uses a separate progress UI (not yet specified)"
       - "responsive layout inferred — prototype has no media queries"
 
@@ -63,6 +64,10 @@ page:
               trigger: row-body
               target: project-form
               sets-mode: edit
+            - intent: clone-project
+              trigger: row-action
+              target: project-form
+              sets-mode: clone
             - intent: run-project
               trigger: row-action
             - intent: open-dialog
@@ -77,11 +82,14 @@ page:
       purpose: project-form
       state:
         dialog-mode:
-          values: [create, edit]
+          values: [create, edit, clone]
           persistent: false
       interactions:
         - intent: submit
           priority: primary
+        - intent: create-subset-project
+          target: subset-project-form
+          visible-when: "dialog-mode == edit"
         - intent: dismiss
       components:
         - role: form-field
@@ -94,11 +102,14 @@ page:
           purpose: db-connection
           visible-when: "dialog-mode == create"
         - role: inline-help
+          purpose: clone-source-summary
+          visible-when: "dialog-mode == clone"
+        - role: inline-help
           purpose: table-generation-order
-          visible-when: "dialog-mode == edit"
+          visible-when: "dialog-mode in [edit, clone]"
         - role: data-row
           purpose: table-config-item
-          visible-when: "dialog-mode == edit"
+          visible-when: "dialog-mode in [edit, clone]"
           fields:
             - name: ordered-index
               type: number
@@ -114,7 +125,55 @@ page:
           type: multi-select
           purpose: add-table
           searchable: true
-          visible-when: "dialog-mode == edit"
+          visible-when: "dialog-mode in [edit, clone]"
+
+    - role: modal-dialog
+      purpose: subset-project-form
+      data:
+        source: project-table-configurations
+        type: collection
+        mutable: true
+      state:
+        selected-tables:
+          type: collection
+          persistent: false
+        dependency-resolution:
+          values: [include-required-upstream, inherit-external-source-strategy]
+          persistent: false
+      interactions:
+        - intent: submit
+          priority: primary
+          disabled-when: "selected-tables missing required upstream tables"
+        - intent: add-required-dependencies
+        - intent: dismiss
+      components:
+        - role: form-field
+          purpose: project-name
+        - role: form-field
+          type: textarea
+          purpose: description
+        - role: data-row
+          purpose: selectable-table-config-item
+          fields:
+            - name: selected
+              type: checkbox
+            - name: ordered-index
+              type: number
+            - name: table-name
+              type: text
+            - name: quantity
+              type: number-input
+            - name: clear-strategy
+              type: select
+            - name: field-rule-reference
+              type: display
+          interactions:
+            - intent: toggle-selection
+        - role: inline-help
+          purpose: dependency-impact
+          visible-when: "selected-tables missing required upstream tables"
+        - role: inline-help
+          purpose: independent-project-copy
 
     - role: modal-dialog
       purpose: execution-history
