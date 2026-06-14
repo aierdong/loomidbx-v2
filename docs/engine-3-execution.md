@@ -388,10 +388,15 @@ SELECT id FROM customers ORDER BY id DESC LIMIT {batch_size};
 - 每行单独提交。
 - 性能最差，不推荐。
 
-**推荐方案 Y（批次级独立事务）**，结合"失败即停止当前表"的策略：
+**推荐方案 Y（批次级独立事务）**，结合"失败即停止当前表"和 Project 级失败传播策略：
 
 - 批次内写入失败 → 回滚当前批次（该批次数据不进入库）→ 停止该表 → 记录失败状态与已写入行数。
 - 已成功提交的批次数据**不回滚**（符合产品大纲 §7 规则"生成失败应中止当前批次"，且避免大规模回滚的性能问题）。
+- 这里的**中止**是执行调度层面的操作，不等同于回滚整个 Project 或回滚已提交批次：
+  - 当前表必须中止，不再继续生成或写入后续批次。
+  - 若失败表存在依赖它的子表，则必须中止当前 Project 的后续处理，并将受影响的下游依赖表标记为 `SKIPPED`，避免连锁约束风险。
+  - 若失败表没有子表依赖，则是否中止整个 Project 取决于用户是否启用 `失败即终止`；未启用时仅记录局部失败，后续无依赖风险的表可以继续执行。
+  - 无论是哪种中止路径，已经提交成功的历史批次都不做补偿删除或事务回滚。
 
 ### 4.2 批次失败的处理流程
 
@@ -411,7 +416,10 @@ except DBException as e:
   ExecutionTableResult.rows_written = rows_written_total  // 记录已成功写入的
   ExecutionTableResult.status = FAILED
   ProgressEmitter.emit(TableFailed, e.message)
-  // 抛出给 TableExecutor，触发 SKIPPED 传播
+  // 抛出给上层调度器，由其按失败传播策略决定：
+  // 1. 当前表中止；
+  // 2. 若存在子表依赖，则 Project 强制中止并传播 SKIPPED；
+  // 3. 若无子表依赖，则根据用户的 fail_fast 选项决定是否中止 Project。
   raise TableExecutionError(e)
 ```
 
@@ -607,4 +615,4 @@ def evaluate_python_expr(expression: str, row: dict) -> any:
 
 ---
 
-*下一篇：专题 5-4 — 可观测性、执行历史与补充关键问题*
+*下一篇：专题 5-4 — 可观测性、执行历史与补充关键问题 （[engine-4-observability.md](./engine-4-observability.md)）*

@@ -28,9 +28,9 @@
 
 **批量生成，边生成边写入**：引擎不把所有行先生成完再批量写入，而是生成一批、写入一批，以控制内存占用并使进度可观测。
 
-**串行表执行（v1）**：表按拓扑顺序串行执行，不做跨表并行。这简化了 FK Pool 的同步问题和错误传播逻辑，并行执行作为 v2 的架构预留。
+**串行表执行（v1）**：表按拓扑顺序串行执行，不做跨表并行，这简化了 FK Pool 的同步问题和错误传播逻辑。
 
-**失败即中止当前及后续依赖**：一张表写入失败后，其所有下游依赖表标记为 `SKIPPED`，整体任务标记为 `PARTIAL_FAILED` 或 `FAILED`。已成功写入的数据不回滚（代价过高），用户下次执行前可勾选 `truncate_before`。
+**失败传播策略可配置，但依赖安全优先**：`失败即终止` 是用户可选的执行策略，而不是引擎的强制原则。若某张表写入失败且没有依赖它的子表，则视为局部失败：在用户未启用 `失败即终止` 时，Project 可继续处理后续无依赖风险的表，整体任务最终标记为 `PARTIAL_FAILED`。若失败表存在子表依赖，则必须终止当前 Project 的后续处理，并将受影响的下游依赖表标记为 `SKIPPED`，因为继续执行会产生连锁约束风险；该规则不受用户是否启用 `失败即终止` 影响。已成功写入的数据不回滚（代价过高），用户下次执行前可勾选 `truncate_before`。
 
 **执行顺序预计算**：拓扑排序在用户保存 Project 时执行，结果写入 `ProjectTable.execution_order`，引擎直接按该字段顺序执行，不在运行时重新计算依赖图（数据模型 D-08）。
 
@@ -75,8 +75,8 @@
 在实际执行之前进行的"飞前检查"。这是唯一允许与目标数据库建立连接并发起查询的非写入阶段。职责包括：
 - 校验所有参与列是否都有有效的 GeneratorConfig（`config_status = ACTIVE`）
 - 执行 `rel_source_sql` 查询以确定父表的存量记录数
-- 根据 D-05 矩阵计算每张表的预估行数
-- 执行 D-10 JoinTable 唯一性容量校验
+- 根据 D-05(docs/engine-2-topology.md:L197) 矩阵计算每张表的预估行数
+- 执行 D-10(docs/engine-2-topology.md:L309) JoinTable 唯一性容量校验
 - 输出 `ExecutionPlan`（含每表精确/估算行数、D-10 警告、阻塞性错误）
 
 **TableExecutor**
@@ -135,7 +135,7 @@ Phase 4: 收尾（Finalize）
 **步骤**：
 1. **配置完整性校验**：遍历所有参与表的所有列，检查是否每列都有 `config_status = ACTIVE` 的 GeneratorConfig（或该列允许为 NULL / 有默认值，见下方"不可生成字段"规则）。任何阻塞性错误（blocking error）均需在此阶段报告，任务不得进入执行阶段。
 2. **rel_source_sql 预查询**：对所有 `parent_project_table_id IS NULL` 的 `ProjectTableRelation` 记录（即父表不在本 Project 中的情况），执行 `rel_source_sql` 统计目标库的存量父记录数，作为行数计算的基础。
-3. **行数预计算**：按照 D-05 矩阵为每张表计算预估行数（详见专题 5-2 §2）。
+3. **行数预计算**：按照 D-05 (./engine-2-topology.md:L309) 矩阵为每张表计算预估行数（详见专题 5-2 §2）。
 4. **JoinTable 容量校验（D-10）**：检测 JoinTable 的倍数上限是否超过 BaseTable 的有效记录总数，如有超限则自动修正并记录 Warning。
 5. **生成并展示 ExecutionPlan**：将每张表的预估行数、执行顺序、Warning 和错误汇总成一份计划报告，在前端展示给用户。
 
@@ -155,7 +155,20 @@ Phase 4: 收尾（Finalize）
 **主循环（按 execution_order 串行）**：
 
 ```
+skipped_tables = Set()
+should_stop_project = false
+
 for each ProjectTable pt in sorted_tables:
+
+  // 0. 若已因上游失败被标记跳过，则不再执行
+  if pt in skipped_tables:
+    continue
+
+  // 0.1 若已触发 Project 级终止，则跳过剩余未执行表
+  if should_stop_project:
+    ExecutionTableResult[pt].status = SKIPPED
+    ProgressEmitter.emit(TableSkipped, pt)
+    continue
 
   // 1. 标记开始
   ExecutionTableResult.status = RUNNING
@@ -185,22 +198,36 @@ for each ProjectTable pt in sorted_tables:
     ExecutionTableResult.error_message = result.error
     ProgressEmitter.emit(TableCompleted, pt, FAILED)
 
-    // 将所有依赖本表的后续表标记为 SKIPPED
-    for each downstream_pt in get_dependents(pt):
-      ExecutionTableResult[downstream_pt].status = SKIPPED
-      ProgressEmitter.emit(TableSkipped, downstream_pt)
+    downstream_pts = get_dependents(pt)
 
-    // 继续执行其他无依赖关系的表（如存在）
-    // 或终止（视依赖拓扑而定，见专题 5-2 §2.4）
+    if downstream_pts is not empty:
+      // 失败表存在子表依赖：必须终止，避免连锁约束风险
+      for each downstream_pt in downstream_pts:
+        ExecutionTableResult[downstream_pt].status = SKIPPED
+        ProgressEmitter.emit(TableSkipped, downstream_pt)
+        skipped_tables.add(downstream_pt)
+
+      should_stop_project = true
+
+    else if execution_options.fail_fast:
+      // 用户启用“失败即终止”：即使是局部失败，也终止剩余处理
+      should_stop_project = true
+
+    else:
+      // 无子表依赖且未启用“失败即终止”：视为局部失败
+      // Project 继续执行后续无依赖风险的表，最终汇总为 PARTIAL_FAILED
+      continue
 ```
 
 **关于"失败后是否继续执行"的策略**：
 
-当一张表失败时，存在两种策略：
-- **策略 A（全局中止）**：任何表失败，立即停止整个任务。简单，但可能浪费已无依赖关系的表的执行机会。
-- **策略 B（跳过依赖，继续无关表）**：失败表及其所有下游依赖标记 SKIPPED，但拓扑上与失败表无关的表继续执行。
+当一张表失败时，引擎按以下优先级处理：
 
-**推荐策略 B**。理由：一个 Project 中可能包含完全独立的两组表（无依赖关系），若因为一组表失败而放弃另一组，用户体验较差。实现方式：维护一个 `skip_table_ids` 集合，在主循环开始每张表时检查是否在集合中。
+1. **失败表存在子表依赖**：必须终止当前 Project 的后续处理，并将受影响的下游依赖表标记为 `SKIPPED`。这是依赖安全规则，不受用户是否启用 `失败即终止` 影响。
+2. **失败表没有子表依赖，且用户启用 `失败即终止`**：立即终止剩余处理。此时失败本身是局部的，但用户选择了全局中止策略。
+3. **失败表没有子表依赖，且用户未启用 `失败即终止`**：视为局部失败，记录该表 `FAILED`，继续执行后续无依赖风险的表；最终任务通常汇总为 `PARTIAL_FAILED`。
+
+实现方式：维护 `skipped_tables` 集合和 `should_stop_project` 标志。`skipped_tables` 用于避免执行已受上游失败影响的依赖表；`should_stop_project` 用于表达用户主动选择的失败即终止，或依赖链失败导致的强制终止。
 
 ### Phase 4：收尾（Finalize）
 

@@ -99,7 +99,6 @@ phase-05-built-in-generators/string-generators
 | 文档 | 建议处理 |
 |---|---|
 | [ai-generator-design.md](./ai-generator-design.md) | 暂缓。后续可扩展为 AI 生成 Phase 或插件能力 |
-| [execution-engine.md](./execution-engine.md) | 若与 `engine-1/2/3/4` 重叠，优先使用拆分后的 engine 文档；必要时作为补充参考 |
 | [generators_manual_simplify.md](./generators_manual_simplify.md) | 可作为生成器清单速读版，但 Source of Truth 仍建议使用 `generators_manual.md` |
 | [thinks_data_model.md](./thinks_data_model.md) | 可作为数据模型研究笔记，不作为实现契约 |
 | [ui-prototype/](./ui-prototype/) | UI 阶段可用于视觉参考，但实现应优先遵循 `ui-dsl/*` 的语义意图 |

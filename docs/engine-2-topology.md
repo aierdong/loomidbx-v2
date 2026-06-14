@@ -429,4 +429,4 @@ if other_base_pool_size == 0:
 
 ---
 
-*下一篇：专题 5-3 — 生成与写入引擎*
+*下一篇：专题 5-3 — 生成与写入引擎 （[engine-3-write.md](./engine-3-write.md)）*
